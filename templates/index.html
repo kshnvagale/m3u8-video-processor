@@ -4,13 +4,19 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Video Processor</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    
+    <!-- Styles -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css">
+    
+    <!-- Cropper.js Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
 </head>
 <body>
     <div class="container">
         <h1>Video Processor</h1>
         
-        <!-- Part 1: Download and Convert -->
+        <!-- Part 1: Download Full Video -->
         <div class="section">
             <h2>Part 1: Download Full Video</h2>
             <div class="form-container">
@@ -33,10 +39,11 @@
             <div id="download-status" class="status"></div>
         </div>
 
-        <!-- Part 2: Trim Video -->
+        <!-- Part 2: Trim and Crop Video -->
         <div class="section">
-            <h2>Part 2: Trim Video</h2>
+            <h2>Part 2: Trim and Crop Video</h2>
             <div class="form-container">
+                <!-- Video Selection -->
                 <div class="input-group">
                     <label for="video-select">Select Video:</label>
                     <select id="video-select">
@@ -47,10 +54,12 @@
                     </select>
                 </div>
 
+                <!-- Video Info -->
                 <div id="video-info" class="video-info" style="display: none;">
                     <p>Video Duration: <span id="video-duration">00:00:00</span></p>
                 </div>
 
+                <!-- Video Preview -->
                 <div class="video-preview">
                     <video id="video-player" controls style="display: none;">
                         <source id="video-source" src="" type="video/mp4">
@@ -58,6 +67,7 @@
                     </video>
                 </div>
 
+                <!-- Time Selection -->
                 <div class="time-controls">
                     <div class="time-set-buttons">
                         <button id="set-start-time" class="time-set-btn">Set Current Time as Start</button>
@@ -72,246 +82,67 @@
                         <input type="text" id="end-time" placeholder="00:00:00">
                     </div>
                     <div class="input-group">
-                        <label for="trim-filename">Save trimmed video as:</label>
+                        <label for="trim-filename">Save processed video as:</label>
                         <input type="text" id="trim-filename" placeholder="Enter filename (without extension)">
                     </div>
                 </div>
 
-                <button id="trim-btn" class="primary-btn">Trim Video</button>
+                <!-- Crop Configuration -->
+                <div class="crop-section" style="display: none;">
+                    <h3>Configure Crop Areas</h3>
+                    
+                    <!-- Screenshot canvas for cropping -->
+                    <canvas id="screenshot-canvas" style="display: none;"></canvas>
+
+                    <!-- Screen share crop -->
+                    <div class="crop-area">
+                        <h4>Screen Share Area</h4>
+                        <div class="crop-preview-container">
+                            <div id="screen-crop-preview"></div>
+                        </div>
+                        <button id="adjust-screen-crop" class="secondary-btn">Adjust Screen Area</button>
+                    </div>
+
+                    <!-- Webcam crop -->
+                    <div class="crop-area">
+                        <h4>Webcam Area</h4>
+                        <div class="crop-preview-container">
+                            <div id="webcam-crop-preview"></div>
+                        </div>
+                        <button id="adjust-webcam-crop" class="secondary-btn">Adjust Webcam Area</button>
+                    </div>
+
+                    <!-- Crop Modal -->
+                    <div id="crop-modal" class="modal">
+                        <div class="modal-content">
+                            <span class="close">&times;</span>
+                            <h3>Adjust Crop Area</h3>
+                            <div class="crop-container">
+                                <img id="crop-image" src="">
+                            </div>
+                            <button id="save-crop" class="primary-btn">Save Crop</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Process Buttons -->
+                <button id="preview-crops" class="secondary-btn">Preview Crops</button>
+                <button id="process-btn" class="primary-btn">Process Video</button>
             </div>
 
-            <div id="trim-progress-container" class="progress-container" style="display: none;">
+            <!-- Processing Progress -->
+            <div id="process-progress-container" class="progress-container" style="display: none;">
                 <div class="loader"></div>
-                <div id="trim-progress-stage" class="progress-stage">Processing video...</div>
+                <div id="process-progress-stage" class="progress-stage">Processing video...</div>
             </div>
 
-            <div id="trim-status" class="status"></div>
+            <div id="process-status" class="status"></div>
             <div id="download-container"></div>
         </div>
     </div>
 
-    <script>
-        // Helper function to show error
-        function showError(container, message) {
-            container.innerHTML = `<div class="error-message">Error: ${message}</div>`;
-        }
-
-        // Helper function to format time
-        function formatTime(seconds) {
-            const hours = Math.floor(seconds / 3600);
-            const minutes = Math.floor((seconds % 3600) / 60);
-            const secs = Math.floor(seconds % 60);
-            return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-        }
-
-        // Helper function to convert HH:MM:SS to seconds
-        function timeToSeconds(time) {
-            const [hours, minutes, seconds] = time.split(':').map(Number);
-            return hours * 3600 + minutes * 60 + seconds;
-        }
-
-        // Validate time format
-        function isValidTimeFormat(time) {
-            return /^([0-1][0-9]|2[0-3]):([0-5][0-9]):([0-5][0-9])$/.test(time);
-        }
-
-        // Download and Convert Video
-        document.getElementById('download-btn').addEventListener('click', async () => {
-            const videoUrl = document.getElementById('video-url').value.trim();
-            const filename = document.getElementById('filename').value.trim();
-
-            if (!videoUrl) {
-                alert('Please enter a video URL');
-                return;
-            }
-
-            if (!filename) {
-                alert('Please enter a filename');
-                return;
-            }
-
-            const downloadBtn = document.getElementById('download-btn');
-            const progressContainer = document.getElementById('download-progress-container');
-            const statusDiv = document.getElementById('download-status');
-
-            downloadBtn.disabled = true;
-            progressContainer.style.display = 'block';
-            statusDiv.textContent = '';
-
-            try {
-                const response = await fetch('/download-video', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                    },
-                    body: `video_url=${encodeURIComponent(videoUrl)}&filename=${encodeURIComponent(filename)}`
-                });
-
-                const data = await response.json();
-                
-                if (data.success) {
-                    const eventSource = new EventSource(`/progress/${data.process_id}`);
-                    
-                    eventSource.onmessage = (event) => {
-                        const progressData = JSON.parse(event.data);
-                        document.getElementById('download-progress-stage').textContent = progressData.message;
-                    };
-
-                    eventSource.onerror = () => {
-                        eventSource.close();
-                        console.log('EventSource closed');
-                        window.location.reload();
-                    };
-
-                    statusDiv.innerHTML = `<div class="success-message">Video downloaded and converted successfully!</div>`;
-                } else {
-                    throw new Error(data.message);
-                }
-            } catch (error) {
-                showError(statusDiv, error.message);
-            } finally {
-                downloadBtn.disabled = false;
-            }
-        });
-
-        // Video Selection and Duration
-        document.getElementById('video-select').addEventListener('change', async (e) => {
-            const filename = e.target.value;
-            const videoInfo = document.getElementById('video-info');
-            const videoPlayer = document.getElementById('video-player');
-            
-            if (!filename) {
-                videoInfo.style.display = 'none';
-                videoPlayer.style.display = 'none';
-                return;
-            }
-
-            try {
-                const response = await fetch(`/get-duration/${filename}`);
-                const data = await response.json();
-                
-                if (data.success) {
-                    document.getElementById('video-duration').textContent = data.duration;
-                    videoInfo.style.display = 'block';
-                    
-                    // Update video source and display video player
-                    const videoSource = document.getElementById('video-source');
-                    videoSource.src = `/download/${filename}`;
-                    videoPlayer.load();
-                    videoPlayer.style.display = 'block';
-                } else {
-                    throw new Error(data.message);
-                }
-            } catch (error) {
-                alert(`Error getting video duration: ${error.message}`);
-            }
-        });
-
-        // Set current time as start/end time
-        document.getElementById('set-start-time').addEventListener('click', () => {
-            const videoPlayer = document.getElementById('video-player');
-            const startTimeInput = document.getElementById('start-time');
-            startTimeInput.value = formatTime(videoPlayer.currentTime);
-        });
-
-        document.getElementById('set-end-time').addEventListener('click', () => {
-            const videoPlayer = document.getElementById('video-player');
-            const endTimeInput = document.getElementById('end-time');
-            endTimeInput.value = formatTime(videoPlayer.currentTime);
-        });
-
-        // Trim Video
-        document.getElementById('trim-btn').addEventListener('click', async () => {
-            const inputFile = document.getElementById('video-select').value;
-            const startTime = document.getElementById('start-time').value.trim();
-            const endTime = document.getElementById('end-time').value.trim();
-            const trimFilename = document.getElementById('trim-filename').value.trim();
-            const videoDuration = document.getElementById('video-duration').textContent;
-
-            if (!inputFile) {
-                alert('Please select a video');
-                return;
-            }
-            if (!startTime || !endTime) {
-                alert('Please enter both start and end times');
-                return;
-            }
-            if (!trimFilename) {
-                alert('Please enter a filename for the trimmed video');
-                return;
-            }
-
-            // Validate time format
-            if (!isValidTimeFormat(startTime) || !isValidTimeFormat(endTime)) {
-                alert('Times must be in HH:MM:SS format');
-                return;
-            }
-
-            // Convert times to seconds for comparison
-            const startSeconds = timeToSeconds(startTime);
-            const endSeconds = timeToSeconds(endTime);
-            const durationSeconds = timeToSeconds(videoDuration);
-
-            // Validate time values
-            if (startSeconds >= endSeconds) {
-                alert('End time must be greater than start time');
-                return;
-            }
-
-            if (startSeconds >= durationSeconds) {
-                alert('Start time cannot be greater than video duration');
-                return;
-            }
-
-            if (endSeconds > durationSeconds) {
-                alert('End time cannot be greater than video duration');
-                return;
-            }
-
-            const trimBtn = document.getElementById('trim-btn');
-            const progressContainer = document.getElementById('trim-progress-container');
-            const statusDiv = document.getElementById('trim-status');
-            const downloadContainer = document.getElementById('download-container');
-
-            trimBtn.disabled = true;
-            progressContainer.style.display = 'block';
-            statusDiv.textContent = '';
-            downloadContainer.textContent = '';
-
-            try {
-                const response = await fetch('/trim-video', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                    },
-                    body: `input_file=${encodeURIComponent(inputFile)}&start_time=${encodeURIComponent(startTime)}&end_time=${encodeURIComponent(endTime)}&filename=${encodeURIComponent(trimFilename)}`
-                });
-
-                const data = await response.json();
-                
-                if (data.success) {
-                    const eventSource = new EventSource(`/progress/${data.process_id}`);
-                    
-                    eventSource.onmessage = (event) => {
-                        const progressData = JSON.parse(event.data);
-                        document.getElementById('trim-progress-stage').textContent = progressData.message;
-                    };
-
-                    eventSource.onerror = () => {
-                        eventSource.close();
-                        downloadContainer.innerHTML = `<a href="${data.download_url}" class="download-btn">Download Trimmed Video</a>`;
-                    };
-
-                    statusDiv.innerHTML = `<div class="success-message">Video trimmed successfully!</div>`;
-                } else {
-                    throw new Error(data.message);
-                }
-            } catch (error) {
-                showError(statusDiv, error.message);
-            } finally {
-                trimBtn.disabled = false;
-            }
-        });
-    </script>
+    <!-- Custom Scripts -->
+    <script src="{{ url_for('static', filename='js/videoCropper.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/formHandler.js') }}" defer></script>
 </body>
 </html>

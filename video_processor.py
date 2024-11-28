@@ -3,21 +3,17 @@ import os
 import subprocess
 import m3u8
 from urllib.parse import urljoin, urlparse
-import uuid
 import logging
-import math
 import time
 import shutil
-import sys
-from typing import Dict, Any
 from queue import Queue
 import traceback
+from typing import List, Dict
 
-def update_progress(queue: Queue, stage: str, message: str):
+def update_progress(queue: Queue, message: str):
     """Send progress update through the queue"""
     try:
         queue.put({
-            'stage': stage,
             'message': message
         })
     except Exception as e:
@@ -29,7 +25,7 @@ def download_full_video(video_url: str, filename: str, progress_queue: Queue) ->
     
     try:
         # Loading playlist
-        update_progress(progress_queue, 'init', 'Loading playlist...')
+        update_progress(progress_queue, 'Loading playlist...')
         
         try:
             playlist = m3u8.load(video_url)
@@ -42,14 +38,14 @@ def download_full_video(video_url: str, filename: str, progress_queue: Queue) ->
         base_url = f"{parsed_url.scheme}://{parsed_url.netloc}{base_path}/"
         
         # Create temporary directory
-        temp_dir = f"temp_{uuid.uuid4().hex[:8]}"
+        temp_dir = f"temp_{os.urandom(4).hex()}"
         os.makedirs(temp_dir, exist_ok=True)
         
         try:
             segment_files = []
             total_segments = len(playlist.segments)
             
-            update_progress(progress_queue, 'downloading', f'Downloading video segments (0/{total_segments})')
+            update_progress(progress_queue, f'Downloading video segments (0/{total_segments})')
             
             # Download all segments
             for i, segment in enumerate(playlist.segments):
@@ -65,11 +61,10 @@ def download_full_video(video_url: str, filename: str, progress_queue: Queue) ->
                         f.write(response.content)
                     segment_files.append(segment_file)
                     
-                    # Update progress
-                    if (i + 1) % 5 == 0 or i == total_segments - 1:  # Update every 5 segments
+                    # Update progress every 5 segments or on last segment
+                    if (i + 1) % 5 == 0 or i == total_segments - 1:
                         update_progress(
                             progress_queue,
-                            'downloading',
                             f'Downloading video segments ({i + 1}/{total_segments})'
                         )
                         
@@ -77,7 +72,7 @@ def download_full_video(video_url: str, filename: str, progress_queue: Queue) ->
                     raise Exception(f"Error downloading segment {i}: {str(e)}")
             
             # Create file list for FFmpeg
-            update_progress(progress_queue, 'processing', 'Converting to MP4...')
+            update_progress(progress_queue, 'Converting to MP4...')
             file_list = os.path.join(temp_dir, 'file_list.txt')
             with open(file_list, 'w') as f:
                 for segment in segment_files:
@@ -92,7 +87,7 @@ def download_full_video(video_url: str, filename: str, progress_queue: Queue) ->
                     '-safe', '0',
                     '-i', file_list,
                     '-c', 'copy',
-                    '-y',  # Overwrite output file if it exists
+                    '-y',
                     output_path
                 ]
                 
@@ -106,7 +101,7 @@ def download_full_video(video_url: str, filename: str, progress_queue: Queue) ->
             except subprocess.CalledProcessError as e:
                 raise Exception(f"FFmpeg error: {e.stderr}")
             
-            update_progress(progress_queue, 'finalizing', 'Finalizing...')
+            update_progress(progress_queue, 'Finalizing...')
             progress_queue.put('DONE')
             
             return filename
@@ -122,53 +117,78 @@ def download_full_video(video_url: str, filename: str, progress_queue: Queue) ->
         progress_queue.put('DONE')
         raise Exception(error_msg)
 
-def trim_video(input_file: str, filename: str, start_time: str, end_time: str, progress_queue: Queue) -> str:
-    """Trim video without re-encoding"""
+def trim_video(input_file: str, screen_output: str, webcam_output: str, 
+               start_time: str, end_time: str, crop_data: Dict, 
+               progress_queue: Queue) -> List[str]:
+    """
+    Trim and crop video into screen share and webcam videos
+    Returns list of output file paths
+    """
     input_path = os.path.join('uploads', input_file)
-    output_path = os.path.join('uploads', filename)
+    output_files = []
     
     try:
         # Validate input file
         if not os.path.exists(input_path):
             raise FileNotFoundError(f"Input file not found: {input_file}")
 
-        # Get video duration
-        duration = get_video_duration(input_path)
+        update_progress(progress_queue, 'Processing screen share video...')
         
-        update_progress(progress_queue, 'processing', 'Trimming video...')
-        
-        ffmpeg_command = [
+        # Process screen share area
+        screen_crop = crop_data['screen']
+        screen_command = [
             'ffmpeg',
             '-i', input_path,
             '-ss', start_time,
             '-to', end_time,
-            '-c', 'copy',
-            '-avoid_negative_ts', '1',
+            '-filter:v', f'crop={int(screen_crop["width"])}:{int(screen_crop["height"])}:{int(screen_crop["x"])}:{int(screen_crop["y"])}',
+            '-c:a', 'copy',
             '-y',
-            output_path
+            screen_output
         ]
         
-        result = subprocess.run(
-            ffmpeg_command,
-            capture_output=True,
-            text=True,
-            check=True
-        )
+        try:
+            subprocess.run(screen_command, capture_output=True, text=True, check=True)
+            output_files.append(screen_output)
+        except subprocess.CalledProcessError as e:
+            raise Exception(f"FFmpeg error (screen): {e.stderr}")
+            
+        update_progress(progress_queue, 'Processing webcam video...')
         
-        update_progress(progress_queue, 'finalizing', 'Finalizing...')
+        # Process webcam area
+        webcam_crop = crop_data['webcam']
+        webcam_command = [
+            'ffmpeg',
+            '-i', input_path,
+            '-ss', start_time,
+            '-to', end_time,
+            '-filter:v', f'crop={int(webcam_crop["width"])}:{int(webcam_crop["height"])}:{int(webcam_crop["x"])}:{int(webcam_crop["y"])}',
+            '-c:a', 'copy',
+            '-y',
+            webcam_output
+        ]
+        
+        try:
+            subprocess.run(webcam_command, capture_output=True, text=True, check=True)
+            output_files.append(webcam_output)
+        except subprocess.CalledProcessError as e:
+            raise Exception(f"FFmpeg error (webcam): {e.stderr}")
+        
+        update_progress(progress_queue, 'Finalizing...')
         progress_queue.put('DONE')
         
-        return filename
+        return output_files
         
-    except subprocess.CalledProcessError as e:
-        error_msg = f"FFmpeg error: {e.stderr}"
-        logging.error(error_msg)
-        progress_queue.put('DONE')
-        raise Exception(error_msg)
     except Exception as e:
-        error_msg = f"Error trimming video: {str(e)}\n{traceback.format_exc()}"
+        error_msg = f"Error processing video: {str(e)}\n{traceback.format_exc()}"
         logging.error(error_msg)
         progress_queue.put('DONE')
+        
+        # Clean up any output files if there was an error
+        for file in output_files:
+            if os.path.exists(file):
+                os.remove(file)
+                
         raise Exception(error_msg)
 
 def get_video_duration(file_path: str) -> str:

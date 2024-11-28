@@ -4,14 +4,24 @@ import os
 from queue import Queue
 import json
 import re
+import zipfile
+import shutil
+from datetime import datetime
 
-app = Flask(__name__)
+app = Flask(__name__,
+    static_folder='static',
+    template_folder='templates'
+)
 
-# Configure upload folder
+# Configure folders
 UPLOAD_FOLDER = 'uploads'
-if not os.path.exists(UPLOAD_FOLDER):
-    os.makedirs(UPLOAD_FOLDER)
+TEMP_FOLDER = 'temp'
+for folder in [UPLOAD_FOLDER, TEMP_FOLDER]:
+    if not os.path.exists(folder):
+        os.makedirs(folder)
+
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config['TEMP_FOLDER'] = TEMP_FOLDER
 
 # Store progress information
 progress_queues = {}
@@ -91,16 +101,19 @@ def download_video():
             'message': str(e)
         }), 500
 
-@app.route('/trim-video', methods=['POST'])
-def trim():
+@app.route('/process-video', methods=['POST'])
+def process_video():
     try:
-        input_file = request.form['input_file']
-        start_time = request.form['start_time']
-        end_time = request.form['end_time']
-        filename = request.form['filename']
+        data = request.get_json()
+        input_file = data['input_file']
+        start_time = data['start_time']
+        end_time = data['end_time']
+        filename = data['filename']
+        crop_data = data['crop_data']
         
         # Validate filename
         filename = validate_filename(filename)
+        base_filename = os.path.splitext(filename)[0]
         
         # Validate timestamps
         try:
@@ -117,23 +130,46 @@ def trim():
         progress_queues[process_id] = Queue()
         
         try:
-            # Trim the video
-            output_file = trim_video(
+            # Create temporary directory for processing
+            temp_dir = os.path.join(app.config['TEMP_FOLDER'], process_id)
+            os.makedirs(temp_dir, exist_ok=True)
+            
+            # Process the video
+            screen_file = f"screen_{base_filename}.mp4"
+            webcam_file = f"webcam_{base_filename}.mp4"
+            
+            # Trim and crop the videos
+            output_files = trim_video(
                 input_file=input_file,
-                filename=filename,
+                screen_output=os.path.join(temp_dir, screen_file),
+                webcam_output=os.path.join(temp_dir, webcam_file),
                 start_time=start_time,
                 end_time=end_time,
+                crop_data=crop_data,
                 progress_queue=progress_queues[process_id]
             )
             
+            # Create zip file
+            zip_filename = f"{base_filename}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
+            zip_path = os.path.join(app.config['TEMP_FOLDER'], zip_filename)
+            
+            with zipfile.ZipFile(zip_path, 'w') as zipf:
+                for file in output_files:
+                    zipf.write(file, os.path.basename(file))
+            
+            # Clean up temporary directory
+            shutil.rmtree(temp_dir)
+            
             return jsonify({
                 'success': True,
-                'message': 'Video trimmed successfully',
-                'download_url': f'/download/{output_file}',
+                'message': 'Video processed successfully',
+                'download_url': f'/download-processed/{zip_filename}',
                 'process_id': process_id
             })
             
         except Exception as e:
+            if os.path.exists(temp_dir):
+                shutil.rmtree(temp_dir)
             progress_queues.pop(process_id, None)
             raise e
             
@@ -173,8 +209,30 @@ def download(filename):
     except Exception as e:
         return str(e), 404
 
+@app.route('/download-processed/<filename>')
+def download_processed(filename):
+    try:
+        zip_path = os.path.join(app.config['TEMP_FOLDER'], filename)
+        
+        def generate():
+            with open(zip_path, 'rb') as f:
+                yield from f
+            # Clean up zip file after download
+            os.remove(zip_path)
+            
+        return Response(
+            generate(),
+            mimetype='application/zip',
+            headers={
+                'Content-Disposition': f'attachment; filename={filename}',
+                'Content-Type': 'application/zip'
+            }
+        )
+    except Exception as e:
+        return str(e), 404
+
 @app.route('/get-duration/<filename>')
-def get_duration(filename):
+def get_duration_route(filename):
     try:
         video_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         duration = get_video_duration(video_path)
@@ -189,4 +247,4 @@ def get_duration(filename):
         }), 500
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=True, port=5000)
