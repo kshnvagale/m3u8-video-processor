@@ -357,4 +357,72 @@ document.addEventListener('DOMContentLoaded', () => {
             processBtn.disabled = false;
         }
     });
+
+    // Cleanup Modal Functionality
+    const cleanupBtn = document.getElementById('cleanup-btn');
+    const cleanupModal = document.getElementById('confirm-cleanup-modal');
+    const cancelCleanupBtn = document.getElementById('cancel-cleanup');
+    const closeCleanupSpan = document.querySelector('#confirm-cleanup-modal .close');
+
+    // Open modal when cleanup button is clicked
+    cleanupBtn.addEventListener('click', () => {
+        cleanupModal.style.display = 'block';
+    });
+
+    // Close modal when X is clicked
+    closeCleanupSpan.addEventListener('click', () => {
+        cleanupModal.style.display = 'none';
+    });
+
+    // Close modal when Cancel is clicked
+    cancelCleanupBtn.addEventListener('click', () => {
+        cleanupModal.style.display = 'none';
+    });
+
+    // Close modal when clicking outside
+    window.addEventListener('click', (event) => {
+        if (event.target === cleanupModal) {
+            cleanupModal.style.display = 'none';
+        }
+    });
+
+    // Handle cleanup confirmation
+    const confirmCleanupBtn = document.getElementById('confirm-cleanup');
+    const cleanupStatus = document.getElementById('cleanup-status');
+
+    confirmCleanupBtn.addEventListener('click', async () => {
+        try {
+            // Show loading state
+            confirmCleanupBtn.disabled = true;
+            confirmCleanupBtn.textContent = 'Cleaning...';
+            
+            const response = await fetch('/cleanup', {
+                method: 'POST'
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                // Close modal
+                cleanupModal.style.display = 'none';
+                
+                // Show success message
+                cleanupStatus.innerHTML = `<div class="success-message">${data.message}</div>`;
+                
+                // Reload the page after 2 seconds
+                setTimeout(() => {
+                    window.location.reload();
+                }, 2000);
+            } else {
+                throw new Error(data.message);
+            }
+            
+        } catch (error) {
+            cleanupStatus.innerHTML = `<div class="error-message">Error: ${error.message}</div>`;
+        } finally {
+            // Reset button state
+            confirmCleanupBtn.disabled = false;
+            confirmCleanupBtn.textContent = 'Delete';
+        }
+    });
 });

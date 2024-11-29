@@ -325,6 +325,38 @@ def process_video():
             'success': False,
             'message': str(e)
         }), 500
+    
+@app.route('/cleanup', methods=['POST'])
+def cleanup():
+    try:
+        # Get list of files before cleanup
+        files_removed = {
+            'uploads': [f for f in os.listdir(app.config['UPLOAD_FOLDER']) if f.endswith('.mp4')],
+            'temp': [f for f in os.listdir(app.config['TEMP_FOLDER']) if f.endswith('.mp4') or f.endswith('.zip')]
+        }
+        
+        # Clean uploads folder
+        for file in files_removed['uploads']:
+            file_path = os.path.join(app.config['UPLOAD_FOLDER'], file)
+            os.remove(file_path)
+            
+        # Clean temp folder
+        for file in files_removed['temp']:
+            file_path = os.path.join(app.config['TEMP_FOLDER'], file)
+            os.remove(file_path)
+            
+        return jsonify({
+            'success': True,
+            'message': f"Successfully removed {len(files_removed['uploads'])} videos and {len(files_removed['temp'])} temporary files",
+            'files_removed': files_removed
+        })
+        
+    except Exception as e:
+        logging.error(f"Cleanup error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': f"Error during cleanup: {str(e)}"
+        }), 500
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)

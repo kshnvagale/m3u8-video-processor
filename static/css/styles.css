@@ -535,3 +535,63 @@ h2 {
     font-weight: 600;
     color: #2d3748;
 }
+
+/* Add this at the end of styles.css */
+.tertiary-btn {
+    padding: 8px 16px;
+    background-color: transparent;
+    border: 1px solid #cbd5e0;
+    border-radius: 6px;
+    color: #718096;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    margin-top: 20px;
+}
+
+.tertiary-btn:hover {
+    background-color: #f7fafc;
+    color: #4a5568;
+    border-color: #a0aec0;
+}
+
+
+/* Confirmation Modal Specific Styles */
+.modal-body {
+    padding: 20px;
+    line-height: 1.5;
+    color: #2d3748;
+}
+
+.modal-body p {
+    margin: 0;
+    font-size: 16px;
+}
+
+.modal-footer {
+    padding: 20px;
+    border-top: 1px solid #e2e8f0;
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
+/* Button specific to cleanup modal */
+#cancel-cleanup {
+    background-color: #e2e8f0;
+    color: #4a5568;
+    border: none;
+}
+
+#cancel-cleanup:hover {
+    background-color: #cbd5e0;
+}
+
+#confirm-cleanup {
+    background-color: #e53e3e;  /* Red color for dangerous action */
+    color: white;
+}
+
+#confirm-cleanup:hover {
+    background-color: #c53030;
+}

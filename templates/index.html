@@ -164,10 +164,35 @@
                     </div>
                 </div>
 
+                
+
                 <!-- Process Buttons -->
                 <button id="preview-crops" class="secondary-btn">Preview Crops</button>
                 <button id="process-btn" class="primary-btn">Process Video</button>
-            </div>
+                </div>
+
+                <!-- Clear Cache Section -->
+                <div id="cleanup-section" style="text-align: center;">
+                    <div id="cleanup-status" class="status"></div>
+                    <button id="cleanup-btn" class="tertiary-btn">Clear Cache & Downloads</button>
+                </div>
+                
+                <!-- Confirmation Modal -->
+                <div id="confirm-cleanup-modal" class="modal">
+                    <div class="modal-content" style="max-width: 400px; margin: 15% auto; height: auto;">
+                        <div class="modal-header">
+                            <h3>Confirm Deletion</h3>
+                            <span class="close">&times;</span>
+                        </div>
+                        <div class="modal-body" style="padding: 20px;">
+                            <p>Are you sure you want to delete the source videos? This action cannot be undone!</p>
+                        </div>
+                        <div class="modal-footer" style="padding: 20px; display: flex; justify-content: flex-end; gap: 10px;">
+                            <button id="cancel-cleanup" class="secondary-btn">Cancel</button>
+                            <button id="confirm-cleanup" class="primary-btn">Delete</button>
+                        </div>
+                    </div>
+                </div>
 
             <!-- Processing Progress -->
             <div id="process-progress-container" class="progress-container" style="display: none;">
@@ -180,8 +205,15 @@
         </div>
     </div>
 
+    
+
     <!-- Custom Scripts -->
     <script src="{{ url_for('static', filename='js/videoCropper.js') }}" defer></script>
     <script src="{{ url_for('static', filename='js/formHandler.js') }}" defer></script>
 </body>
 </html>
+
+
+
+
+
