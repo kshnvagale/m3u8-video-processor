@@ -33,7 +33,20 @@
 
             <div id="download-progress-container" class="progress-container" style="display: none;">
                 <div class="loader"></div>
-                <div id="download-progress-stage" class="progress-stage">Downloading video...</div>
+                <div id="download-progress-stage" class="progress-stage">
+                    Downloading video...
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill"></div>
+                    <div class="progress-percent">0%</div>
+                </div>
+                <div class="progress-stats">
+                    <div id="download-progress-details" class="progress-details">
+                        <div class="stat-item">Time Elapsed: <span id="time-elapsed">00:00:00</span></div>
+                        <div class="stat-item">Time Left: <span id="time-left">Calculating...</span></div>
+                        <div class="stat-item">Speed: <span id="download-speed">Calculating...</span></div>
+                    </div>
+                </div>
             </div>
 
             <div id="download-status" class="status"></div>

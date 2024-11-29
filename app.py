@@ -1,12 +1,18 @@
 from flask import Flask, render_template, request, send_file, jsonify, Response
 from video_processor import download_full_video, trim_video, get_video_duration
 import os
-from queue import Queue
+import logging
 import json
 import re
 import zipfile
 import shutil
+import threading
+import time
 from datetime import datetime
+from progress_tracker import progress_tracker
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
 
 app = Flask(__name__,
     static_folder='static',
@@ -22,9 +28,6 @@ for folder in [UPLOAD_FOLDER, TEMP_FOLDER]:
 
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['TEMP_FOLDER'] = TEMP_FOLDER
-
-# Store progress information
-progress_queues = {}
 
 def validate_filename(filename):
     """Validate and sanitize filename"""
@@ -67,38 +70,136 @@ def download_video():
         # Validate and sanitize filename
         filename = validate_filename(filename)
         
-        # Create a queue for this process
+        # Create a process ID
         process_id = os.urandom(16).hex()
-        progress_queues[process_id] = Queue()
         
-        try:
-            # Download and convert the full video
-            output_file = download_full_video(
-                video_url=video_url,
-                filename=filename,
-                progress_queue=progress_queues[process_id]
-            )
-            
-            # Get video duration
-            video_path = os.path.join(app.config['UPLOAD_FOLDER'], output_file)
-            duration = get_video_duration(video_path)
-            
-            return jsonify({
-                'success': True,
-                'message': 'Video downloaded and converted successfully',
-                'filename': output_file,
-                'duration': duration,
-                'process_id': process_id
-            })
-            
-        except Exception as e:
-            progress_queues.pop(process_id, None)
-            raise e
+        # Start download in a separate thread
+        def download_task():
+            try:
+                download_full_video(video_url, filename, process_id)
+            except Exception as e:
+                logging.error(f"Download error: {str(e)}")
+                progress_tracker.update_progress(process_id, {
+                    "status": "error",
+                    "message": f"Error: {str(e)}"
+                })
+        
+        thread = threading.Thread(target=download_task)
+        thread.start()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Download started',
+            'filename': filename,
+            'process_id': process_id
+        })
             
     except Exception as e:
+        logging.error(f"Error initiating download: {str(e)}")
         return jsonify({
             'success': False,
             'message': str(e)
+        }), 500
+
+@app.route('/check-progress/<process_id>')
+def check_progress(process_id):
+    """Check progress for a specific process"""
+    progress_data = progress_tracker.get_progress(process_id)
+    return jsonify(progress_data)
+
+@app.route('/download/<filename>')
+def download(filename):
+    try:
+        if not filename or '..' in filename:
+            raise ValueError("Invalid filename")
+            
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"File not found: {filename}")
+            
+        return send_file(
+            file_path,
+            as_attachment=True,
+            download_name=filename
+        )
+    except Exception as e:
+        logging.error(f"Download error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': str(e)
+        }), 404
+
+@app.route('/download-processed/<filename>')
+def download_processed(filename):
+    try:
+        if not filename or '..' in filename:
+            raise ValueError("Invalid filename")
+            
+        zip_path = os.path.join(app.config['TEMP_FOLDER'], filename)
+        
+        if not os.path.exists(zip_path):
+            logging.error(f"Zip file not found: {zip_path}")
+            return jsonify({
+                'success': False,
+                'message': 'Download file not found'
+            }), 404
+            
+        try:
+            return send_file(
+                zip_path,
+                as_attachment=True,
+                download_name=filename,
+                mimetype='application/zip'
+            )
+        finally:
+            # Clean up zip file after sending
+            if os.path.exists(zip_path):
+                try:
+                    os.remove(zip_path)
+                except Exception as e:
+                    logging.error(f"Error removing zip file: {str(e)}")
+                    
+    except Exception as e:
+        logging.error(f"Error in download_processed: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': f"Download error: {str(e)}"
+        }), 500
+
+@app.route('/get-duration/<filename>')
+def get_duration_route(filename):
+    try:
+        # Validate and sanitize the filename
+        if not filename or '..' in filename:
+            raise ValueError("Invalid filename")
+            
+        video_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        
+        # Check if file exists
+        if not os.path.exists(video_path):
+            raise FileNotFoundError(f"Video file not found: {filename}")
+            
+        # Get duration using FFprobe
+        duration = get_video_duration(video_path)
+        
+        return jsonify({
+            'success': True,
+            'duration': duration
+        })
+        
+    except FileNotFoundError as e:
+        logging.error(f"File not found error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': str(e)
+        }), 404
+        
+    except Exception as e:
+        logging.error(f"Error getting video duration: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': f"Error getting video duration: {str(e)}"
         }), 500
 
 @app.route('/process-video', methods=['POST'])
@@ -125,122 +226,101 @@ def process_video():
                 'message': str(e)
             }), 400
         
-        # Create a queue for this process
+        # Create a process ID
         process_id = os.urandom(16).hex()
-        progress_queues[process_id] = Queue()
         
         try:
             # Create temporary directory for processing
             temp_dir = os.path.join(app.config['TEMP_FOLDER'], process_id)
             os.makedirs(temp_dir, exist_ok=True)
             
-            # Process the video
+            # Setup output filenames
             screen_file = f"screen_{base_filename}.mp4"
             webcam_file = f"webcam_{base_filename}.mp4"
             
-            # Trim and crop the videos
-            output_files = trim_video(
-                input_file=input_file,
-                screen_output=os.path.join(temp_dir, screen_file),
-                webcam_output=os.path.join(temp_dir, webcam_file),
-                start_time=start_time,
-                end_time=end_time,
-                crop_data=crop_data,
-                progress_queue=progress_queues[process_id]
-            )
+            # Start processing in a separate thread
+            def process_task():
+                try:
+                    # Process the videos
+                    progress_tracker.update_progress(process_id, {
+                        "status": "processing",
+                        "message": "Starting video processing...",
+                        "progress": 0
+                    })
+                    
+                    output_files = trim_video(
+                        input_file=input_file,
+                        screen_output=os.path.join(temp_dir, screen_file),
+                        webcam_output=os.path.join(temp_dir, webcam_file),
+                        start_time=start_time,
+                        end_time=end_time,
+                        crop_data=crop_data,
+                        process_id=process_id
+                    )
+                    
+                    if not output_files:
+                        raise Exception("No output files were created")
+                    
+                    progress_tracker.update_progress(process_id, {
+                        "status": "creating_zip",
+                        "message": "Creating download package...",
+                        "progress": 90
+                    })
+                    
+                    # Create zip file
+                    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                    zip_filename = f"{base_filename}_{timestamp}.zip"
+                    zip_path = os.path.join(app.config['TEMP_FOLDER'], zip_filename)
+                    
+                    with zipfile.ZipFile(zip_path, 'w') as zipf:
+                        for file in output_files:
+                            if os.path.exists(file):
+                                zipf.write(file, os.path.basename(file))
+                            else:
+                                logging.error(f"Output file not found: {file}")
+                    
+                    if not os.path.exists(zip_path):
+                        raise Exception("Failed to create zip file")
+                    
+                    # Update progress with download URL
+                    progress_tracker.update_progress(process_id, {
+                        "status": "complete",
+                        "message": "Processing complete!",
+                        "progress": 100,
+                        "download_url": f'/download-processed/{zip_filename}'
+                    })
+                    
+                except Exception as e:
+                    logging.error(f"Processing error: {str(e)}")
+                    progress_tracker.update_progress(process_id, {
+                        "status": "error",
+                        "message": f"Error: {str(e)}"
+                    })
+                finally:
+                    # Clean up temporary directory
+                    if os.path.exists(temp_dir):
+                        try:
+                            shutil.rmtree(temp_dir)
+                        except Exception as e:
+                            logging.error(f"Error cleaning up temp dir: {str(e)}")
             
-            # Create zip file
-            zip_filename = f"{base_filename}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
-            zip_path = os.path.join(app.config['TEMP_FOLDER'], zip_filename)
-            
-            with zipfile.ZipFile(zip_path, 'w') as zipf:
-                for file in output_files:
-                    zipf.write(file, os.path.basename(file))
-            
-            # Clean up temporary directory
-            shutil.rmtree(temp_dir)
+            # Start processing thread
+            thread = threading.Thread(target=process_task)
+            thread.start()
             
             return jsonify({
                 'success': True,
-                'message': 'Video processed successfully',
-                'download_url': f'/download-processed/{zip_filename}',
+                'message': 'Processing started',
                 'process_id': process_id
             })
             
         except Exception as e:
-            if os.path.exists(temp_dir):
+            if 'temp_dir' in locals() and os.path.exists(temp_dir):
                 shutil.rmtree(temp_dir)
-            progress_queues.pop(process_id, None)
             raise e
             
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'message': str(e)
-        }), 500
-
-@app.route('/progress/<process_id>')
-def progress(process_id):
-    def generate():
-        queue = progress_queues.get(process_id)
-        if queue:
-            while True:
-                try:
-                    progress = queue.get()
-                    if progress == 'DONE':
-                        break
-                    yield f"data: {json.dumps(progress)}\n\n"
-                except Exception as e:
-                    print(f"Error in progress generation: {e}")
-                    break
-            # Clean up the queue
-            progress_queues.pop(process_id, None)
-    
-    return Response(generate(), mimetype='text/event-stream')
-
-@app.route('/download/<filename>')
-def download(filename):
-    try:
-        return send_file(
-            os.path.join(app.config['UPLOAD_FOLDER'], filename),
-            as_attachment=True,
-            download_name=filename
-        )
-    except Exception as e:
-        return str(e), 404
-
-@app.route('/download-processed/<filename>')
-def download_processed(filename):
-    try:
-        zip_path = os.path.join(app.config['TEMP_FOLDER'], filename)
-        
-        def generate():
-            with open(zip_path, 'rb') as f:
-                yield from f
-            # Clean up zip file after download
-            os.remove(zip_path)
-            
-        return Response(
-            generate(),
-            mimetype='application/zip',
-            headers={
-                'Content-Disposition': f'attachment; filename={filename}',
-                'Content-Type': 'application/zip'
-            }
-        )
-    except Exception as e:
-        return str(e), 404
-
-@app.route('/get-duration/<filename>')
-def get_duration_route(filename):
-    try:
-        video_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        duration = get_video_duration(video_path)
-        return jsonify({
-            'success': True,
-            'duration': duration
-        })
-    except Exception as e:
+        logging.error(f"Process video error: {str(e)}")
         return jsonify({
             'success': False,
             'message': str(e)

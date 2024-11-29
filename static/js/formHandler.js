@@ -1,4 +1,54 @@
 // Helper Functions
+
+function startProgressPolling(process_id, options = {}) {
+    const {
+        onProgress = () => {},
+        onComplete = () => {},
+        onError = () => {},
+        interval = 1000
+    } = options;
+    
+    const pollProgress = async () => {
+        try {
+            const response = await fetch(`/check-progress/${process_id}`);
+            const data = await response.json();
+            
+            console.log('Progress update:', data);  // For debugging
+            
+            if (data.status === 'error') {
+                onError(data.message);
+                return false;
+            }
+            
+            if (data.status === 'complete') {
+                onComplete(data);
+                return false;
+            }
+            
+            onProgress(data);
+            return true;
+            
+        } catch (error) {
+            console.error('Progress check error:', error);
+            onError('Failed to check progress');
+            return false;
+        }
+    };
+    
+    const poll = async () => {
+        const shouldContinue = await pollProgress();
+        if (shouldContinue) {
+            setTimeout(poll, interval);
+        }
+    };
+    
+    poll();
+}
+
+
+
+
+
 function formatTime(seconds) {
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
@@ -7,6 +57,7 @@ function formatTime(seconds) {
 }
 
 function timeToSeconds(time) {
+    if (!time) return 0;
     const [hours, minutes, seconds] = time.split(':').map(Number);
     return hours * 3600 + minutes * 60 + seconds;
 }
@@ -34,10 +85,14 @@ document.addEventListener('DOMContentLoaded', () => {
             cropSection.style.display = 'none';
             return;
         }
-
+    
         try {
             const response = await fetch(`/get-duration/${filename}`);
             const data = await response.json();
+            
+            if (!response.ok) {
+                throw new Error(data.message || 'Failed to get video duration');
+            }
             
             if (data.success) {
                 document.getElementById('video-duration').textContent = data.duration;
@@ -54,10 +109,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     cropSection.style.display = 'block';
                 };
             } else {
-                throw new Error(data.message);
+                throw new Error(data.message || 'Failed to get video duration');
             }
         } catch (error) {
+            console.error('Error getting video duration:', error);
             alert(`Error getting video duration: ${error.message}`);
+            videoInfo.style.display = 'none';
+            videoPlayer.style.display = 'none';
+            cropSection.style.display = 'none';
         }
     });
 
@@ -78,25 +137,23 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('download-btn').addEventListener('click', async () => {
         const videoUrl = document.getElementById('video-url').value.trim();
         const filename = document.getElementById('filename').value.trim();
-
-        if (!videoUrl) {
-            alert('Please enter a video URL');
+    
+        if (!videoUrl || !filename) {
+            alert('Please enter both video URL and filename');
             return;
         }
-
-        if (!filename) {
-            alert('Please enter a filename');
-            return;
-        }
-
+    
         const downloadBtn = document.getElementById('download-btn');
         const progressContainer = document.getElementById('download-progress-container');
+        const progressStage = document.getElementById('download-progress-stage');
+        const progressFill = document.querySelector('.progress-fill');
+        const progressDetails = document.getElementById('download-progress-details');
         const statusDiv = document.getElementById('download-status');
-
+    
         downloadBtn.disabled = true;
         progressContainer.style.display = 'block';
         statusDiv.textContent = '';
-
+    
         try {
             const response = await fetch('/download-video', {
                 method: 'POST',
@@ -105,33 +162,70 @@ document.addEventListener('DOMContentLoaded', () => {
                 },
                 body: `video_url=${encodeURIComponent(videoUrl)}&filename=${encodeURIComponent(filename)}`
             });
-
+    
             const data = await response.json();
             
             if (data.success) {
-                const eventSource = new EventSource(`/progress/${data.process_id}`);
-                
-                eventSource.onmessage = (event) => {
-                    const progressData = JSON.parse(event.data);
-                    document.getElementById('download-progress-stage').textContent = progressData.message;
-                };
-
-                eventSource.onerror = () => {
-                    eventSource.close();
-                    // Hide progress container
-                    progressContainer.style.display = 'none';
-                    statusDiv.innerHTML = `<div class="success-message">Video downloaded and converted successfully!</div>`;
-                    // Re-enable button and reload page to update video list
-                    downloadBtn.disabled = false;
-                    window.location.reload();
-                };
+                startProgressPolling(data.process_id, {
+                    onProgress: (progress) => {
+                        console.log('Progress update:', progress);  // For debugging
+                        
+                        const progressStage = document.getElementById('download-progress-stage');
+                        const progressFill = document.querySelector('.progress-fill');
+                        const progressPercent = document.querySelector('.progress-percent');
+                        const timeElapsed = document.getElementById('time-elapsed');
+                        const timeLeft = document.getElementById('time-left');
+                        const downloadSpeed = document.getElementById('download-speed');
+                        
+                        // Update progress message
+                        if (progress.message) {
+                            progressStage.textContent = progress.message;
+                        }
+                        
+                        // Update progress bar and percentage
+                        if (progress.progress !== undefined) {
+                            const percent = Math.min(Math.round(progress.progress), 100);
+                            progressFill.style.width = `${percent}%`;
+                            progressPercent.textContent = `${percent}%`;
+                        }
+                        
+                        // Update time elapsed
+                        if (progress.elapsed) {
+                            timeElapsed.textContent = progress.elapsed;
+                        }
+                        
+                        // Update time remaining
+                        if (progress.remaining) {
+                            timeLeft.textContent = progress.remaining;
+                        } else {
+                            timeLeft.textContent = 'Calculating...';
+                        }
+                        
+                        // Update download speed
+                        if (progress.speed) {
+                            downloadSpeed.textContent = progress.speed;
+                        } else {
+                            downloadSpeed.textContent = 'Calculating...';
+                        }
+                    },
+                    onComplete: () => {
+                        progressContainer.style.display = 'none';
+                        statusDiv.innerHTML = '<div class="success-message">Download complete!</div>';
+                        downloadBtn.disabled = false;
+                        window.location.reload();
+                    },
+                    onError: (error) => {
+                        progressContainer.style.display = 'none';
+                        statusDiv.innerHTML = `<div class="error-message">Error: ${error}</div>`;
+                        downloadBtn.disabled = false;
+                    }
+                });
             } else {
                 throw new Error(data.message);
             }
         } catch (error) {
-            // Hide progress container on error
             progressContainer.style.display = 'none';
-            showError(statusDiv, error.message);
+            statusDiv.innerHTML = `<div class="error-message">Error: ${error.message}</div>`;
             downloadBtn.disabled = false;
         }
     });
@@ -218,29 +312,46 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = await response.json();
             
             if (data.success) {
-                const eventSource = new EventSource(`/progress/${data.process_id}`);
-                
-                eventSource.onmessage = (event) => {
-                    const progressData = JSON.parse(event.data);
-                    document.getElementById('process-progress-stage').textContent = progressData.message;
-                };
-
-                eventSource.onerror = () => {
-                    eventSource.close();
-                    // Hide progress container
-                    progressContainer.style.display = 'none';
-                    // Show download link
-                    downloadContainer.innerHTML = `<a href="${data.download_url}" class="download-btn">Download Processed Videos</a>`;
-                    // Show success message
-                    statusDiv.innerHTML = `<div class="success-message">Video processed successfully!</div>`;
-                    // Re-enable the process button
-                    processBtn.disabled = false;
-                };
+                startProgressPolling(data.process_id, {
+                    onProgress: (progress) => {
+                        const progressStage = document.getElementById('process-progress-stage');
+                        progressStage.textContent = progress.message || 'Processing video...';
+                        
+                        // Update progress bar if available
+                        if (progress.progress !== undefined) {
+                            const progressFill = document.querySelector('#process-progress-container .progress-fill');
+                            if (progressFill) {
+                                progressFill.style.width = `${progress.progress}%`;
+                            }
+                        }
+                    },
+                    onComplete: (data) => {
+                        // Hide progress container
+                        progressContainer.style.display = 'none';
+                        
+                        // Show download link if available
+                        if (data.download_url) {
+                            downloadContainer.innerHTML = `
+                                <a href="${data.download_url}" class="download-btn">Download Processed Videos</a>
+                            `;
+                        }
+                        
+                        // Show success message
+                        statusDiv.innerHTML = '<div class="success-message">Video processed successfully!</div>';
+                        
+                        // Re-enable the process button
+                        processBtn.disabled = false;
+                    },
+                    onError: (error) => {
+                        progressContainer.style.display = 'none';
+                        statusDiv.innerHTML = `<div class="error-message">Error: ${error}</div>`;
+                        processBtn.disabled = false;
+                    }
+                });
             } else {
                 throw new Error(data.message);
             }
         } catch (error) {
-            // Hide progress container on error
             progressContainer.style.display = 'none';
             statusDiv.innerHTML = `<div class="error-message">Error: ${error.message}</div>`;
             processBtn.disabled = false;

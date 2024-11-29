@@ -389,3 +389,69 @@ h2 {
     text-decoration: none;
     color: white;
 }
+
+.progress-details {
+    margin-top: 10px;
+    font-size: 14px;
+    color: #666;
+    font-family: monospace;
+}
+
+.progress-bar {
+    width: 100%;
+    height: 20px;
+    background-color: #f0f0f0;
+    border-radius: 10px;
+    margin: 15px 0;
+    overflow: hidden;
+}
+
+.progress-fill {
+    width: 0%;
+    height: 100%;
+    background-color: #4299e1;
+    transition: width 0.3s ease;
+}
+
+.progress-details {
+    margin-top: 10px;
+    font-size: 14px;
+    color: #666;
+    font-family: monospace;
+}
+
+.progress-stage {
+    margin-bottom: 15px;
+    color: #4a5568;
+    font-weight: 500;
+}
+
+.progress-stats {
+    margin-top: 15px;
+    padding: 10px;
+    background-color: #f8fafc;
+    border-radius: 8px;
+    border: 1px solid #e2e8f0;
+}
+
+.progress-details {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    text-align: center;
+}
+
+.stat-item {
+    padding: 8px;
+    background-color: white;
+    border-radius: 6px;
+    border: 1px solid #edf2f7;
+    font-size: 14px;
+    color: #4a5568;
+}
+
+.stat-item span {
+    font-family: monospace;
+    font-weight: 600;
+    color: #2d3748;
+}
