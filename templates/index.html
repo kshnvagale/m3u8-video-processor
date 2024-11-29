@@ -129,11 +129,37 @@
                     <div id="crop-modal" class="modal">
                         <div class="modal-content">
                             <span class="close">&times;</span>
-                            <h3>Adjust Crop Area</h3>
+                            
+                            <div class="modal-header">
+                                <h3>Adjust Crop Area</h3>
+                            </div>
+                    
                             <div class="crop-container">
                                 <img id="crop-image" src="">
                             </div>
-                            <button id="save-crop" class="primary-btn">Save Crop</button>
+                    
+                            <div class="modal-footer">
+                                <div class="crop-controls">
+                                    <div class="aspect-ratio-control">
+                                        <label>
+                                            <input type="checkbox" id="maintain-aspect-ratio" checked>
+                                            Maintain Aspect Ratio
+                                            <div class="crop-dimensions">
+                                                <div class="dimension-group">
+                                                    <label>X: <input type="number" id="crop-x" min="0"></label>
+                                                    <label>Y: <input type="number" id="crop-y" min="0"></label>
+                                                </div>
+                                                <div class="dimension-group">
+                                                    <label>Width: <input type="number" id="crop-width" min="1"></label>
+                                                    <label>Height: <input type="number" id="crop-height" min="1"></label>
+                                                </div>
+                                            </div>
+                                        </label>
+                                    </div>
+                                    
+                                </div>
+                                <button id="save-crop" class="primary-btn">Save Crop</button>
+                            </div>
                         </div>
                     </div>
                 </div>

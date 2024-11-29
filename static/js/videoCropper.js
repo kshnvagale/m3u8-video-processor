@@ -6,6 +6,7 @@ class VideoCropper {
             screen: null,
             webcam: null
         };
+        this.maintainAspectRatio = true;  // Add this line
         this.setupEventListeners();
     }
 
@@ -71,10 +72,76 @@ class VideoCropper {
             cropBoxMovable: true,
             cropBoxResizable: true,
             toggleDragModeOnDblclick: false,
-            data: this.cropData[type] || defaultCrop
+            data: this.cropData[type] || defaultCrop,
+            crop: (event) => {
+                // Update input fields when crop box changes
+                const data = event.detail;
+                document.getElementById('crop-x').value = Math.round(data.x);
+                document.getElementById('crop-y').value = Math.round(data.y);
+                document.getElementById('crop-width').value = Math.round(data.width);
+                document.getElementById('crop-height').value = Math.round(data.height);
+            }
         };
 
         this.cropper = new Cropper(cropImage, options);
+        // Get references to all input fields
+        const xInput = document.getElementById('crop-x');
+        const yInput = document.getElementById('crop-y');
+        const widthInput = document.getElementById('crop-width');
+        const heightInput = document.getElementById('crop-height');
+
+        // Get aspect ratio checkbox and add listener
+            const aspectRatioCheckbox = document.getElementById('maintain-aspect-ratio');
+            aspectRatioCheckbox.checked = this.maintainAspectRatio;
+
+            aspectRatioCheckbox.addEventListener('change', (e) => {
+            this.maintainAspectRatio = e.target.checked;
+             if (this.cropper) {
+            this.cropper.setAspectRatio(e.target.checked ? this.cropper.getData().width / this.cropper.getData().height : NaN);
+         }
+});
+
+
+
+// Function to update cropper when inputs change
+const updateFromInput = (e) => {
+    if (!this.cropper) return;
+    
+    const data = this.cropper.getData();
+    const newValue = parseInt(e.target.value) || 0;
+    
+    // Update the specific dimension that changed
+    switch(e.target.id) {
+        case 'crop-x':
+            data.x = newValue;
+            break;
+        case 'crop-y':
+            data.y = newValue;
+            break;
+        case 'crop-width':
+            data.width = newValue;
+            break;
+        case 'crop-height':
+            data.height = newValue;
+            break;
+    }
+    
+    // Apply the new data to the cropper
+    this.cropper.setData(data);
+};
+    // Add event listeners to input fields
+    xInput.addEventListener('input', updateFromInput);
+    yInput.addEventListener('input', updateFromInput);
+    widthInput.addEventListener('input', updateFromInput);
+    heightInput.addEventListener('input', updateFromInput);
+
+
+        // Update input fields with initial crop data
+        const cropData = this.cropper.getData();
+        xInput.value = Math.round(cropData.x);
+        yInput.value = Math.round(cropData.y);
+        widthInput.value = Math.round(cropData.width);
+        heightInput.value = Math.round(cropData.height);
     }
 
     getDefaultCropArea(type, width, height) {
