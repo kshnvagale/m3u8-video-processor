@@ -235,8 +235,16 @@ def process_video():
             os.makedirs(temp_dir, exist_ok=True)
             
             # Setup output filenames
-            screen_file = f"screen_{base_filename}.mp4"
-            webcam_file = f"webcam_{base_filename}.mp4"
+            # Get original input filename without .mp4 extension
+            source_video = os.path.splitext(input_file)[0]
+            
+            # Format timestamps for filename (replace : with - for file compatibility)
+            start_time_fmt = start_time.replace(':', '-')
+            end_time_fmt = end_time.replace(':', '-')
+            
+            # Process the video with new naming format
+            screen_file = f"{source_video}_screen_{base_filename}_{start_time_fmt}_to_{end_time_fmt}.mp4"
+            webcam_file = f"{source_video}_webcam_{base_filename}_{start_time_fmt}_to_{end_time_fmt}.mp4"
             
             # Start processing in a separate thread
             def process_task():
@@ -269,7 +277,7 @@ def process_video():
                     
                     # Create zip file
                     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                    zip_filename = f"{base_filename}_{timestamp}.zip"
+                    zip_filename = f"{source_video}_{base_filename}_{start_time_fmt}_to_{end_time_fmt}.zip"
                     zip_path = os.path.join(app.config['TEMP_FOLDER'], zip_filename)
                     
                     with zipfile.ZipFile(zip_path, 'w') as zipf:
