@@ -85,7 +85,7 @@ python3 app.py
 
 3. Open your web browser and navigate to:
 ```
-http://localhost:5000
+http://localhost:5000 or http://127.0.0.1:5000
 ```
 
 ## Using the Application
