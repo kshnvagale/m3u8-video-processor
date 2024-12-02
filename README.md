@@ -1,4 +1,4 @@
-# Video Processor
+# m3u8-video-processor
 
 A Flask-based web application that allows users to download, trim, and crop videos. The application specifically handles m3u8 video streams and can split videos into separate screen share and webcam components.
 
@@ -47,8 +47,8 @@ ffprobe -version
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/video-processor.git
-cd video-processor
+git clone https://github.com/kshnvagale/m3u8-video-processor.git
+cd m3u8-video-processor
 ```
 
 2. Create and activate a virtual environment:
@@ -115,7 +115,7 @@ http://localhost:5000
 ## File Structure
 
 ```
-video-processor/
+m3u8-video-processor/
 ├── static/
 │   ├── css/
 │   │   └── styles.css
@@ -156,4 +156,4 @@ video-processor/
 
 ## Support
 
-For support, please open an issue in the GitHub repository or contact the maintainers.
+For support, please open an issue in the GitHub repository: https://github.com/kshnvagale/m3u8-video-processor/issues
