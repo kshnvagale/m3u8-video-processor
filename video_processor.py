@@ -7,6 +7,17 @@ import shutil
 import re
 from typing import List, Dict
 from progress_tracker import progress_tracker
+from queue import Queue  # Add this if it's missing
+import traceback
+
+def update_progress(queue: Queue, message: str):
+    """Send progress update through the queue"""
+    try:
+        queue.put({
+            'message': message
+        })
+    except Exception as e:
+        logging.error(f"Error sending progress update: {str(e)}")
 
 def format_time(seconds):
     """Format seconds into HH:MM:SS"""
@@ -146,10 +157,10 @@ def download_full_video(video_url: str, filename: str, process_id: str) -> str:
             os.remove(output_path)
             
         raise Exception(error_msg)
-
+    
 def trim_video(input_file: str, screen_output: str, webcam_output: str, 
                start_time: str, end_time: str, crop_data: Dict, 
-               process_id: str) -> List[str]:
+               progress_queue: Queue) -> List[str]:
     """
     Trim and crop video into screen share and webcam videos
     Returns list of output file paths
@@ -161,13 +172,8 @@ def trim_video(input_file: str, screen_output: str, webcam_output: str,
         # Validate input file
         if not os.path.exists(input_path):
             raise FileNotFoundError(f"Input file not found: {input_file}")
-        
-        # Update progress
-        progress_tracker.update_progress(process_id, {
-            "status": "processing",
-            "message": "Processing screen share video...",
-            "progress": 0
-        })
+
+        update_progress(progress_queue, 'Processing screen share video...')
         
         # Process screen share area
         screen_crop = crop_data['screen']
@@ -185,13 +191,10 @@ def trim_video(input_file: str, screen_output: str, webcam_output: str,
         try:
             subprocess.run(screen_command, capture_output=True, text=True, check=True)
             output_files.append(screen_output)
-            progress_tracker.update_progress(process_id, {
-                "status": "processing",
-                "message": "Processing webcam video...",
-                "progress": 50
-            })
         except subprocess.CalledProcessError as e:
             raise Exception(f"FFmpeg error (screen): {e.stderr}")
+            
+        update_progress(progress_queue, 'Processing webcam video...')
         
         # Process webcam area
         webcam_crop = crop_data['webcam']
@@ -209,31 +212,100 @@ def trim_video(input_file: str, screen_output: str, webcam_output: str,
         try:
             subprocess.run(webcam_command, capture_output=True, text=True, check=True)
             output_files.append(webcam_output)
-            progress_tracker.update_progress(process_id, {
-                "status": "complete",
-                "message": "Processing complete",
-                "progress": 100
-            })
         except subprocess.CalledProcessError as e:
             raise Exception(f"FFmpeg error (webcam): {e.stderr}")
+        
+        update_progress(progress_queue, 'Finalizing...')
+        progress_queue.put('DONE')
         
         return output_files
         
     except Exception as e:
-        error_msg = str(e)
-        logging.error(f"Error processing video: {error_msg}")
-        
-        # Update error progress
-        progress_tracker.update_progress(process_id, {
-            "status": "error",
-            "message": f"Error: {error_msg}"
-        })
+        error_msg = f"Error processing video: {str(e)}\n{traceback.format_exc()}"
+        logging.error(error_msg)
+        progress_queue.put('DONE')
         
         # Clean up any output files if there was an error
         for file in output_files:
             if os.path.exists(file):
                 os.remove(file)
                 
+        raise Exception(error_msg)
+
+def resize_videos(screen_input: str, webcam_input: str, progress_queue: Queue = None) -> List[str]:
+    """
+    Resize cropped videos to specific resolutions while maintaining aspect ratio
+    Screen: 1530x1080
+    Webcam: 360x270
+    Returns list of resized output file paths
+    """
+    output_files = []
+    try:
+        if progress_queue:
+            update_progress(progress_queue, 'Resizing screen recording...')
+
+        # Create output filenames
+        screen_output = screen_input.replace('.mp4', '_resized.mp4')
+        webcam_output = webcam_input.replace('.mp4', '_resized.mp4')
+
+        # Resize screen recording with padding to maintain aspect ratio
+        screen_command = [
+            'ffmpeg',
+            '-i', screen_input,
+            '-vf', 'scale=1530:1080:force_original_aspect_ratio=decrease,pad=1530:1080:(ow-iw)/2:(oh-ih)/2',
+            '-c:v', 'libx264',  # Use H.264 codec
+            '-preset', 'ultrafast',  # Fastest encoding
+            '-crf', '23',  # Balanced quality and size
+            '-c:a', 'copy',  # Copy audio stream
+            '-y',
+            screen_output
+        ]
+
+        try:
+            subprocess.run(screen_command, capture_output=True, text=True, check=True)
+            output_files.append(screen_output)
+        except subprocess.CalledProcessError as e:
+            raise Exception(f"FFmpeg error (screen resize): {e.stderr}")
+
+        if progress_queue:
+            update_progress(progress_queue, 'Resizing webcam recording...')
+
+        # Resize webcam recording with padding
+        webcam_command = [
+            'ffmpeg',
+            '-i', webcam_input,
+            '-vf', 'scale=360:270:force_original_aspect_ratio=decrease,pad=360:270:(ow-iw)/2:(oh-ih)/2',
+            '-c:v', 'libx264',  # Use H.264 codec
+            '-preset', 'ultrafast',  # Fastest encoding
+            '-crf', '23',  # Balanced quality and size
+            '-c:a', 'copy',  # Copy audio stream
+            '-y',
+            webcam_output
+        ]
+
+        try:
+            subprocess.run(webcam_command, capture_output=True, text=True, check=True)
+            output_files.append(webcam_output)
+        except subprocess.CalledProcessError as e:
+            raise Exception(f"FFmpeg error (webcam resize): {e.stderr}")
+
+        if progress_queue:
+            update_progress(progress_queue, 'Resizing completed...')
+            progress_queue.put('DONE')
+
+        return output_files
+
+    except Exception as e:
+        error_msg = f"Error resizing videos: {str(e)}\n{traceback.format_exc()}"
+        logging.error(error_msg)
+        if progress_queue:
+            progress_queue.put('DONE')
+
+        # Clean up any output files if there was an error
+        for file in output_files:
+            if os.path.exists(file):
+                os.remove(file)
+
         raise Exception(error_msg)
 
 def get_video_duration(file_path: str) -> str:

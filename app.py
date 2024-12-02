@@ -1,5 +1,5 @@
 from flask import Flask, render_template, request, send_file, jsonify, Response
-from video_processor import download_full_video, trim_video, get_video_duration
+from video_processor import download_full_video, trim_video, get_video_duration, resize_videos
 import os
 import logging
 import json
@@ -10,6 +10,8 @@ import threading
 import time
 from datetime import datetime
 from progress_tracker import progress_tracker
+from queue import Queue
+
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -28,6 +30,9 @@ for folder in [UPLOAD_FOLDER, TEMP_FOLDER]:
 
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['TEMP_FOLDER'] = TEMP_FOLDER
+
+# Store progress information
+progress_queues = {}
 
 def validate_filename(filename):
     """Validate and sanitize filename"""
@@ -230,6 +235,10 @@ def process_video():
         process_id = os.urandom(16).hex()
         
         try:
+            # Create a queue for this process
+            process_id = os.urandom(16).hex()
+            progress_queues[process_id] = Queue()
+
             # Create temporary directory for processing
             temp_dir = os.path.join(app.config['TEMP_FOLDER'], process_id)
             os.makedirs(temp_dir, exist_ok=True)
@@ -263,11 +272,24 @@ def process_video():
                         start_time=start_time,
                         end_time=end_time,
                         crop_data=crop_data,
-                        process_id=process_id
-                    )
-                    
+                        progress_queue=progress_queues[process_id]
+                     )
+                     
                     if not output_files:
                         raise Exception("No output files were created")
+
+                    progress_tracker.update_progress(process_id, {
+                        "status": "resizing",
+                        "message": "Resizing videos to target resolution...",
+                        "progress": 60
+                    })
+
+                    # Resize the videos
+                    resized_files = resize_videos(
+                        screen_input=output_files[0],  # screen video
+                        webcam_input=output_files[1],  # webcam video
+                        progress_queue=progress_queues[process_id]
+                    )
                     
                     progress_tracker.update_progress(process_id, {
                         "status": "creating_zip",
@@ -281,7 +303,7 @@ def process_video():
                     zip_path = os.path.join(app.config['TEMP_FOLDER'], zip_filename)
                     
                     with zipfile.ZipFile(zip_path, 'w') as zipf:
-                        for file in output_files:
+                        for file in resized_files:  # Use resized_files instead of output_files
                             if os.path.exists(file):
                                 zipf.write(file, os.path.basename(file))
                             else:
@@ -305,13 +327,22 @@ def process_video():
                         "message": f"Error: {str(e)}"
                     })
                 finally:
-                    # Clean up temporary directory
-                    if os.path.exists(temp_dir):
-                        try:
-                            shutil.rmtree(temp_dir)
-                        except Exception as e:
-                            logging.error(f"Error cleaning up temp dir: {str(e)}")
-            
+                    # Clean up temporary directory and any intermediate files
+                    if process_id in progress_queues:
+                        progress_queues.pop(process_id, None)
+
+                if os.path.exists(temp_dir):
+                    try:
+                        # Clean up any output and resized files
+                        for file in output_files + (resized_files if 'resized_files' in locals() else []):
+                            if os.path.exists(file):
+                                os.remove(file)
+                        shutil.rmtree(temp_dir)
+
+
+                    except Exception as e:
+                        logging.error(f"Error cleaning up temp dir: {str(e)}")
+                    
             # Start processing thread
             thread = threading.Thread(target=process_task)
             thread.start()
