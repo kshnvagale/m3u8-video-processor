@@ -177,7 +177,7 @@ def trim_video(input_file: str, screen_output: str, webcam_output: str,
             '-ss', start_time,
             '-to', end_time,
             '-filter:v', f'crop={int(screen_crop["width"])}:{int(screen_crop["height"])}:{int(screen_crop["x"])}:{int(screen_crop["y"])}',
-            '-c:a', 'copy',
+            '-an',
             '-y',
             screen_output
         ]
