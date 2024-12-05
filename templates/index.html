@@ -82,21 +82,22 @@
 
                 <!-- Time Selection -->
                 <div class="time-controls">
-                    <div class="time-set-buttons">
-                        <button id="set-start-time" class="time-set-btn">Set Current Time as Start</button>
-                        <button id="set-end-time" class="time-set-btn">Set Current Time as End</button>
-                    </div>
+                    <label>(HH:MM:SS)</label>
                     <div class="input-group">
-                        <label for="start-time">Start Time (HH:MM:SS):</label>
+                        <label for="start-time">Start:</label>
                         <input type="text" id="start-time" placeholder="00:00:00">
-                    </div>
-                    <div class="input-group">
-                        <label for="end-time">End Time (HH:MM:SS):</label>
+                        <button id="set-start-time" class="time-set-btn">Set Start</button>
+                        <label for="end-time">End:</label>
                         <input type="text" id="end-time" placeholder="00:00:00">
+                        <button id="set-end-time" class="time-set-btn">Set End</button>
+                        <label for="segment-number">Segment number:</label>
+                        <input type="number" id="trim-filename" name="trim-filename" min="1" required>
                     </div>
                     <div class="input-group">
-                        Enter Segment Number:
-                        <input type="number" id="trim-filename" name="trim-filename" min="1" required>
+                       
+                    </div>
+                    <div class="input-group">
+                        
                     </div>
                 </div>
 

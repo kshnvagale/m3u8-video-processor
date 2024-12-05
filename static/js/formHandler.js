@@ -333,15 +333,13 @@ document.addEventListener('DOMContentLoaded', () => {
                         // Hide progress container
                         progressContainer.style.display = 'none';
                         
-                        // Show download link if available
+                        // If we have a download URL, trigger download automatically
                         if (data.download_url) {
-                            downloadContainer.innerHTML = `
-                                <a href="${data.download_url}" class="download-btn">Download Processed Videos</a>
-                            `;
+                            window.location.href = data.download_url;
                         }
                         
                         // Show success message
-                        statusDiv.innerHTML = '<div class="success-message">Video processed successfully!</div>';
+                        statusDiv.innerHTML = '<div class="success-message">Video processed successfully! Download started automatically.</div>';
                         
                         // Re-enable the process button
                         processBtn.disabled = false;

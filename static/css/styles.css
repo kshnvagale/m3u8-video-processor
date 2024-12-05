@@ -46,7 +46,7 @@ h2 {
 .input-group {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 12px;
 }
 
 .input-group label {
@@ -275,9 +275,6 @@ h2 {
     bottom: 0;
     left: 0;
     right: 0;
-    height: 90vh;
-    width: 100%;
-    border-radius: 20px 20px 0 0;
     display: flex;
     flex-direction: column;
 }
@@ -603,6 +600,9 @@ h2 {
     font-size: 14px;
     width: 100px;  /* Smaller width for number input */
     transition: border-color 0.3s, box-shadow 0.3s;
+    -webkit-appearance: textfield;
+    -moz-appearance: textfield;
+    appearance: textfield;
 }
 
 .input-group input[type="number"]:focus {
@@ -618,6 +618,221 @@ h2 {
     margin: 0;
 }
 
-.input-group input[type="number"] {
-    -moz-appearance: textfield;
+
+
+/* Multi Crop Mode Toggle */
+.switch {
+    position: relative;
+    display: inline-block;
+    width: 60px;
+    height: 34px;
+    margin: 0 10px;
+}
+
+.switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #ccc;
+    transition: .4s;
+    border-radius: 34px;
+}
+
+.slider:before {
+    position: absolute;
+    content: "";
+    height: 26px;
+    width: 26px;
+    left: 4px;
+    bottom: 4px;
+    background-color: white;
+    transition: .4s;
+    border-radius: 50%;
+}
+
+input:checked + .slider {
+    background-color: #2196F3;
+}
+
+input:checked + .slider:before {
+    transform: translateX(26px);
+}
+
+/* Multi Segment Container */
+.segments-list {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.segment-row {
+    position: relative;
+    background-color: #fff;
+    padding: 15px;
+    border-radius: 8px;
+    border: 1px solid #e2e8f0;
+    margin-bottom: 15px;
+    display: grid;
+    grid-template-columns: minmax(100px, 1fr) minmax(150px, 2fr) minmax(150px, 2fr) minmax(100px, 1fr);
+    gap: 10px;
+    align-items: center;
+    overflow: hidden;
+}
+
+.duration input {
+    background-color: #f7fafc;
+    color: #4a5568;
+    cursor: not-allowed;
+}
+
+/* Progress Styles */
+.overall-progress {
+    margin-top: 20px;
+    padding: 15px;
+    background-color: #f8f9fa;
+    border-radius: 8px;
+}
+
+.segment-progress {
+    margin-top: 10px;
+}
+
+.progress-label {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 5px;
+    color: #4a5568;
+}
+
+/* Multi-segment processing styles */
+.multi-segment-progress {
+    background-color: white;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    margin-top: 20px;
+}
+
+.progress-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+    color: #2d3748;
+    font-weight: 500;
+}
+
+.progress-bars {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.progress-section {
+    background-color: #f7fafc;
+    padding: 15px;
+    border-radius: 6px;
+    border: 1px solid #e2e8f0;
+}
+
+.progress-label {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    color: #4a5568;
+    font-size: 14px;
+}
+
+.progress-bar {
+    height: 8px;
+    background-color: #edf2f7;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.progress-fill {
+    height: 100%;
+    background-color: #4299e1;
+    transition: width 0.3s ease;
+    width: 0%;
+}
+
+.segment-progress .progress-fill {
+    background-color: #48bb78;
+}
+
+/* Time input group styles */
+.time-input-group {
+    display: flex;
+    gap: 8px;
+}
+
+.time-input-group input {
+    flex: 1;
+}
+
+.time-input-group button {
+    padding: 8px 12px;
+    background-color: #4299e1;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.time-input-group button:hover {
+    background-color: #3182ce;
+}
+
+/* Segment row styles */
+.segment-row {
+    position: relative;
+    background-color: #fff;
+    padding: 20px;
+    border-radius: 8px;
+    border: 1px solid #e2e8f0;
+    margin-bottom: 15px;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 20px;
+    align-items: center;
+}
+
+.remove-segment-btn {
+    position: absolute;
+    top: -10px;
+    right: -10px;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background-color: #fc8181;
+    color: white;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.remove-segment-btn:hover {
+    background-color: #f56565;
+}
+
+.mode-controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
 }

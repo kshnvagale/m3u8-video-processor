@@ -256,13 +256,16 @@ def process_video():
             # Create a process ID
             process_id = os.urandom(16).hex()
             
+            # Get original input filename without .mp4 extension
+            source_video = os.path.splitext(input_file)[0]
+            
+            # Define zip filename early
+            zip_filename = f"asl_{source_video}_segment-{segment_number}_zip.zip"
+            
             try:
                 # Create temporary directory for processing
                 temp_dir = os.path.join(app.config['TEMP_FOLDER'], process_id)
                 os.makedirs(temp_dir, exist_ok=True)
-                
-                # Get original input filename without .mp4 extension
-                source_video = os.path.splitext(input_file)[0]
                 
                 # Create filenames with new format
                 screen_file = f"asl_{source_video}_segment-{segment_number}_screen.mp4"
@@ -289,18 +292,30 @@ def process_video():
                     raise Exception("No output files were created")
                 
                 # Create zip file
-                zip_filename = f"asl_{source_video}_segment-{segment_number}_zip.zip"
                 zip_path = os.path.join(app.config['TEMP_FOLDER'], zip_filename)
                 
                 with zipfile.ZipFile(zip_path, 'w') as zipf:
                     for file in output_files:
                         if os.path.exists(file):
                             zipf.write(file, os.path.basename(file))
+                            # Delete the individual video files after adding to zip
+                            os.remove(file)
                         else:
                             logging.error(f"Output file not found: {file}")
                 
+                # Clean up temp directory
+                if os.path.exists(temp_dir):
+                    shutil.rmtree(temp_dir)
+                
                 if not os.path.exists(zip_path):
                     raise Exception("Failed to create zip file")
+                
+                # Update progress with download URL
+                progress_tracker.update_progress(process_id, {
+                    "status": "complete",
+                    "message": "Processing complete",
+                    "download_url": f"/download-processed/{zip_filename}"
+                })
                 
                 return jsonify({
                     'success': True,
@@ -309,7 +324,7 @@ def process_video():
                 })
                 
             except Exception as e:
-                if 'temp_dir' in locals() and os.path.exists(temp_dir):
+                if os.path.exists(temp_dir):
                     shutil.rmtree(temp_dir)
                 raise e
                     
