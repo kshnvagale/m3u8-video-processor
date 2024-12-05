@@ -95,8 +95,8 @@
                         <input type="text" id="end-time" placeholder="00:00:00">
                     </div>
                     <div class="input-group">
-                        <label for="trim-filename">Save processed video as:</label>
-                        <input type="text" id="trim-filename" placeholder="Enter filename (without extension)">
+                        Enter Segment Number:
+                        <input type="number" id="trim-filename" name="trim-filename" min="1" required>
                     </div>
                 </div>
 
@@ -185,7 +185,7 @@
                             <span class="close">&times;</span>
                         </div>
                         <div class="modal-body" style="padding: 20px;">
-                            <p>Are you sure you want to delete the source videos? This action cannot be undone!</p>
+                            <p>Are you sure you want to delete all videos? This will remove both source videos and processed segments. This action cannot be undone!</p>
                         </div>
                         <div class="modal-footer" style="padding: 20px; display: flex; justify-content: flex-end; gap: 10px;">
                             <button id="cancel-cleanup" class="secondary-btn">Cancel</button>

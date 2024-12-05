@@ -29,19 +29,28 @@ for folder in [UPLOAD_FOLDER, TEMP_FOLDER]:
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['TEMP_FOLDER'] = TEMP_FOLDER
 
-def validate_filename(filename):
+def validate_filename(filename, is_segment=False):
     """Validate and sanitize filename"""
-    # Remove any directory components
-    filename = os.path.basename(filename)
-    
-    # Replace invalid characters with underscore
-    filename = re.sub(r'[^\w\-_.]', '_', filename)
-    
-    # Ensure it ends with .mp4
-    if not filename.lower().endswith('.mp4'):
-        filename += '.mp4'
-    
-    return filename
+    if is_segment:
+        try:
+            num = int(filename)
+            if num < 1:
+                raise ValueError('Segment number must be positive')
+            return str(num)
+        except ValueError:
+            raise ValueError('Invalid segment number')
+    else:
+        # Remove any directory components
+        filename = os.path.basename(filename)
+        
+        # Replace invalid characters with underscore
+        filename = re.sub(r'[^\w\-_.]', '_', filename)
+        
+        # Ensure it ends with .mp4
+        if not filename.lower().endswith('.mp4'):
+            filename += '.mp4'
+        
+        return filename
 
 def validate_timestamp(timestamp):
     """Validate HH:MM:SS format"""
@@ -56,50 +65,12 @@ def validate_timestamp(timestamp):
 
 @app.route('/')
 def index():
-    # Get list of available MP4 files
-    mp4_files = [f for f in os.listdir(UPLOAD_FOLDER) if f.endswith('.mp4')]
+    # Get list of available MP4 files, excluding processed files
+    mp4_files = [f for f in os.listdir(UPLOAD_FOLDER) 
+                 if f.endswith('.mp4') and not any(x in f for x in ['_screen', '_av'])]
     mp4_files.sort(key=lambda x: os.path.getmtime(os.path.join(UPLOAD_FOLDER, x)), reverse=True)
     return render_template('index.html', mp4_files=mp4_files)
 
-@app.route('/download-video', methods=['POST'])
-def download_video():
-    try:
-        video_url = request.form['video_url']
-        filename = request.form['filename']
-        
-        # Validate and sanitize filename
-        filename = validate_filename(filename)
-        
-        # Create a process ID
-        process_id = os.urandom(16).hex()
-        
-        # Start download in a separate thread
-        def download_task():
-            try:
-                download_full_video(video_url, filename, process_id)
-            except Exception as e:
-                logging.error(f"Download error: {str(e)}")
-                progress_tracker.update_progress(process_id, {
-                    "status": "error",
-                    "message": f"Error: {str(e)}"
-                })
-        
-        thread = threading.Thread(target=download_task)
-        thread.start()
-        
-        return jsonify({
-            'success': True,
-            'message': 'Download started',
-            'filename': filename,
-            'process_id': process_id
-        })
-            
-    except Exception as e:
-        logging.error(f"Error initiating download: {str(e)}")
-        return jsonify({
-            'success': False,
-            'message': str(e)
-        }), 500
 
 @app.route('/check-progress/<process_id>')
 def check_progress(process_id):
@@ -206,127 +177,111 @@ def get_duration_route(filename):
 def process_video():
     try:
         data = request.get_json()
-        input_file = data['input_file']
-        start_time = data['start_time']
-        end_time = data['end_time']
-        filename = data['filename']
-        crop_data = data['crop_data']
         
-        # Validate filename
-        filename = validate_filename(filename)
-        base_filename = os.path.splitext(filename)[0]
-        
-        # Validate timestamps
-        try:
-            validate_timestamp(start_time)
-            validate_timestamp(end_time)
-        except ValueError as e:
-            return jsonify({
-                'success': False,
-                'message': str(e)
-            }), 400
-        
-        # Create a process ID
-        process_id = os.urandom(16).hex()
-        
-        try:
-            # Create temporary directory for processing
-            temp_dir = os.path.join(app.config['TEMP_FOLDER'], process_id)
-            os.makedirs(temp_dir, exist_ok=True)
+        # For video download (Part 1)
+        if 'video_url' in data:
+            video_url = data.get('video_url')
+            filename = data.get('filename')
             
-            # Setup output filenames
-            # Get original input filename without .mp4 extension
-            source_video = os.path.splitext(input_file)[0]
+            if not video_url or not filename:
+                raise ValueError('Video URL and filename are required')
             
-            # Format timestamps for filename (replace : with - for file compatibility)
-            start_time_fmt = start_time.replace(':', '-')
-            end_time_fmt = end_time.replace(':', '-')
+            # Add .mp4 extension if not present
+            if not filename.lower().endswith('.mp4'):
+                filename += '.mp4'
+                
+            # Create a process ID
+            process_id = os.urandom(16).hex()
             
-            # Process the video with new naming format
-            screen_file = f"{source_video}_screen_{base_filename}_{start_time_fmt}_to_{end_time_fmt}.mp4"
-            webcam_file = f"{source_video}_webcam_{base_filename}_{start_time_fmt}_to_{end_time_fmt}.mp4"
-            
-            # Start processing in a separate thread
-            def process_task():
+            # Start download in a separate thread
+            def download_task():
                 try:
-                    # Process the videos
-                    progress_tracker.update_progress(process_id, {
-                        "status": "processing",
-                        "message": "Starting video processing...",
-                        "progress": 0
-                    })
-                    
-                    output_files = trim_video(
-                        input_file=input_file,
-                        screen_output=os.path.join(temp_dir, screen_file),
-                        webcam_output=os.path.join(temp_dir, webcam_file),
-                        start_time=start_time,
-                        end_time=end_time,
-                        crop_data=crop_data,
-                        process_id=process_id
-                    )
-                    
-                    if not output_files:
-                        raise Exception("No output files were created")
-                    
-                    progress_tracker.update_progress(process_id, {
-                        "status": "creating_zip",
-                        "message": "Creating download package...",
-                        "progress": 90
-                    })
-                    
-                    # Create zip file
-                    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                    zip_filename = f"{source_video}_{base_filename}_{start_time_fmt}_to_{end_time_fmt}.zip"
-                    zip_path = os.path.join(app.config['TEMP_FOLDER'], zip_filename)
-                    
-                    with zipfile.ZipFile(zip_path, 'w') as zipf:
-                        for file in output_files:
-                            if os.path.exists(file):
-                                zipf.write(file, os.path.basename(file))
-                            else:
-                                logging.error(f"Output file not found: {file}")
-                    
-                    if not os.path.exists(zip_path):
-                        raise Exception("Failed to create zip file")
-                    
-                    # Update progress with download URL
-                    progress_tracker.update_progress(process_id, {
-                        "status": "complete",
-                        "message": "Processing complete!",
-                        "progress": 100,
-                        "download_url": f'/download-processed/{zip_filename}'
-                    })
-                    
+                    download_full_video(video_url, filename, process_id)
                 except Exception as e:
-                    logging.error(f"Processing error: {str(e)}")
+                    logging.error(f"Download error: {str(e)}")
                     progress_tracker.update_progress(process_id, {
                         "status": "error",
                         "message": f"Error: {str(e)}"
                     })
-                finally:
-                    # Clean up temporary directory
-                    if os.path.exists(temp_dir):
-                        try:
-                            shutil.rmtree(temp_dir)
-                        except Exception as e:
-                            logging.error(f"Error cleaning up temp dir: {str(e)}")
             
-            # Start processing thread
-            thread = threading.Thread(target=process_task)
+            thread = threading.Thread(target=download_task)
             thread.start()
             
             return jsonify({
                 'success': True,
-                'message': 'Processing started',
+                'message': 'Download started',
+                'filename': filename,
                 'process_id': process_id
             })
+        
+        # For video processing (Part 2)
+        else:
+            input_file = data['input_file']
+            start_time = data['start_time']
+            end_time = data['end_time']
+            segment_number = data['filename']
+            crop_data = data['crop_data']
             
-        except Exception as e:
-            if 'temp_dir' in locals() and os.path.exists(temp_dir):
-                shutil.rmtree(temp_dir)
-            raise e
+            # Create a process ID
+            process_id = os.urandom(16).hex()
             
+            try:
+                # Create temporary directory for processing
+                temp_dir = os.path.join(app.config['TEMP_FOLDER'], process_id)
+                os.makedirs(temp_dir, exist_ok=True)
+                
+                # Get original input filename without .mp4 extension
+                source_video = os.path.splitext(input_file)[0]
+                
+                # Create filenames with new format
+                screen_file = f"asl_{source_video}_segment-{segment_number}_screen.mp4"
+                webcam_file = f"asl_{source_video}_segment-{segment_number}_av.mp4"
+                
+                # Process the videos
+                progress_tracker.update_progress(process_id, {
+                    "status": "processing",
+                    "message": "Starting video processing...",
+                    "progress": 0
+                })
+                
+                output_files = trim_video(
+                    input_file=input_file,
+                    screen_output=os.path.join(temp_dir, screen_file),
+                    webcam_output=os.path.join(temp_dir, webcam_file),
+                    start_time=start_time,
+                    end_time=end_time,
+                    crop_data=crop_data,
+                    process_id=process_id
+                )
+                
+                if not output_files:
+                    raise Exception("No output files were created")
+                
+                # Create zip file
+                zip_filename = f"asl_{source_video}_segment-{segment_number}_zip.zip"
+                zip_path = os.path.join(app.config['TEMP_FOLDER'], zip_filename)
+                
+                with zipfile.ZipFile(zip_path, 'w') as zipf:
+                    for file in output_files:
+                        if os.path.exists(file):
+                            zipf.write(file, os.path.basename(file))
+                        else:
+                            logging.error(f"Output file not found: {file}")
+                
+                if not os.path.exists(zip_path):
+                    raise Exception("Failed to create zip file")
+                
+                return jsonify({
+                    'success': True,
+                    'message': 'Processing started',
+                    'process_id': process_id
+                })
+                
+            except Exception as e:
+                if 'temp_dir' in locals() and os.path.exists(temp_dir):
+                    shutil.rmtree(temp_dir)
+                raise e
+                    
     except Exception as e:
         logging.error(f"Process video error: {str(e)}")
         return jsonify({
@@ -337,10 +292,12 @@ def process_video():
 @app.route('/cleanup', methods=['POST'])
 def cleanup():
     try:
-        # Get list of files before cleanup
+        # Get list of files before cleanup, excluding processed files from uploads count
         files_removed = {
-            'uploads': [f for f in os.listdir(app.config['UPLOAD_FOLDER']) if f.endswith('.mp4')],
-            'temp': [f for f in os.listdir(app.config['TEMP_FOLDER']) if f.endswith('.mp4') or f.endswith('.zip')]
+            'uploads': [f for f in os.listdir(app.config['UPLOAD_FOLDER']) 
+                       if f.endswith('.mp4') and not any(x in f for x in ['_screen', '_av'])],
+            'temp': [f for f in os.listdir(app.config['TEMP_FOLDER']) 
+                    if f.endswith('.mp4') or f.endswith('.zip')]
         }
         
         # Clean uploads folder

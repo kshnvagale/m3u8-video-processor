@@ -155,12 +155,15 @@ document.addEventListener('DOMContentLoaded', () => {
         statusDiv.textContent = '';
     
         try {
-            const response = await fetch('/download-video', {
+            const response = await fetch('/process-video', {  // Changed endpoint
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'Content-Type': 'application/json',  // Changed content type
                 },
-                body: `video_url=${encodeURIComponent(videoUrl)}&filename=${encodeURIComponent(filename)}`
+                body: JSON.stringify({  // Changed body format
+                    video_url: videoUrl,
+                    filename: filename
+                })
             });
     
             const data = await response.json();
@@ -247,8 +250,9 @@ document.addEventListener('DOMContentLoaded', () => {
             alert('Please enter both start and end times');
             return;
         }
-        if (!trimFilename) {
-            alert('Please enter a filename for the processed video');
+        const segmentNumber = document.getElementById('trim-filename').value;
+        if (!segmentNumber || isNaN(segmentNumber) || segmentNumber < 1) {
+            alert('Please enter a valid segment number (must be a positive number)');
             return;
         }
 
@@ -406,8 +410,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Close modal
                 cleanupModal.style.display = 'none';
                 
-                // Show success message
-                cleanupStatus.innerHTML = `<div class="success-message">${data.message}</div>`;
+                // Show success message with modified text
+                cleanupStatus.innerHTML = `<div class="success-message">Successfully cleaned up ${data.files_removed.uploads.length} source videos and ${data.files_removed.temp.length} processed segments</div>`;
                 
                 // Reload the page after 2 seconds
                 setTimeout(() => {

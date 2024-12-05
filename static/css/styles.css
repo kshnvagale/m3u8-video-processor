@@ -595,3 +595,29 @@ h2 {
 #confirm-cleanup:hover {
     background-color: #c53030;
 }
+
+.input-group input[type="number"] {
+    padding: 12px;
+    border: 1px solid #ced4da;
+    border-radius: 6px;
+    font-size: 14px;
+    width: 100px;  /* Smaller width for number input */
+    transition: border-color 0.3s, box-shadow 0.3s;
+}
+
+.input-group input[type="number"]:focus {
+    outline: none;
+    border-color: #4299e1;
+    box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.2);
+}
+
+/* Remove spinner buttons from number input */
+.input-group input[type="number"]::-webkit-inner-spin-button,
+.input-group input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.input-group input[type="number"] {
+    -moz-appearance: textfield;
+}

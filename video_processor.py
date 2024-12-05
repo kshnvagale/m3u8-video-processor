@@ -54,10 +54,11 @@ def download_full_video(video_url: str, filename: str, process_id: str) -> str:
         ffmpeg_command = [
             'ffmpeg',
             '-i', video_url,
-            '-c', 'copy',
-            '-y',
-            '-progress', '-',
-            '-nostats',
+            '-c', 'copy',           # Copy streams without re-encoding
+            '-y',                   # Overwrite output file if it exists
+            '-progress', 'pipe:1',  # Output progress to stdout
+            '-nostats',             # Disable standard stats output
+            '-loglevel', 'error',   # Only show errors in log
             output_path
         ]
         
@@ -65,7 +66,8 @@ def download_full_video(video_url: str, filename: str, process_id: str) -> str:
             ffmpeg_command,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            universal_newlines=True
+            universal_newlines=True,
+            bufsize=1  # Line buffered
         )
         
         # Pattern to extract time from FFmpeg output
@@ -74,7 +76,7 @@ def download_full_video(video_url: str, filename: str, process_id: str) -> str:
         while True:
             line = process.stdout.readline()
             
-            if process.poll() is not None:
+            if not line and process.poll() is not None:
                 break
                 
             if line:
@@ -121,6 +123,10 @@ def download_full_video(video_url: str, filename: str, process_id: str) -> str:
         if process.returncode != 0:
             error_output = process.stderr.read()
             raise Exception(f"FFmpeg error: {error_output}")
+        
+        # Verify the output file exists and has content
+        if not os.path.exists(output_path) or os.path.getsize(output_path) == 0:
+            raise Exception("Download failed: Output file is missing or empty")
         
         # Update final progress
         progress_tracker.update_progress(process_id, {
