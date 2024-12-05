@@ -7,6 +7,24 @@ import shutil
 import re
 from typing import List, Dict
 from progress_tracker import progress_tracker
+from flask import current_app
+from pathlib import Path
+
+def get_downloads_path():
+    """Get user's Downloads folder path"""
+    try:
+        if os.name == 'nt':  # Windows
+            import winreg
+            sub_key = r'SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Shell Folders'
+            downloads_guid = '{374DE290-123F-4565-9164-39C4925E467B}'
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, sub_key) as key:
+                downloads_path = winreg.QueryValueEx(key, downloads_guid)[0]
+        else:  # Linux/Mac
+            downloads_path = str(Path.home() / "Downloads")
+        app_downloads = os.path.join(downloads_path, "video_processor")
+        return app_downloads
+    except Exception as e:
+        return os.path.join(os.getcwd(), "downloads")
 
 def format_time(seconds):
     """Format seconds into HH:MM:SS"""
@@ -43,8 +61,9 @@ def get_duration_from_ffmpeg(file_or_url):
 
 def download_full_video(video_url: str, filename: str, process_id: str) -> str:
     """Download video directly using FFmpeg with progress tracking"""
-    output_path = os.path.join('uploads', filename)
-    start_time = time.time()  # Initialize start_time at the beginning
+    output_path = os.path.join(get_downloads_path(), 'uploads', filename)
+
+    start_time = time.time()
     
     try:
         # Get video duration first
@@ -160,7 +179,7 @@ def trim_video(input_file: str, screen_output: str, webcam_output: str,
     Trim and crop video into screen share and webcam videos
     Returns list of output file paths
     """
-    input_path = os.path.join('uploads', input_file)
+    input_path = os.path.join(get_downloads_path(), 'uploads', input_file)
     output_files = []
     
     try:

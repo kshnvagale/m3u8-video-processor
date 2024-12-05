@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, send_file, jsonify, Response
+from flask import Flask, render_template, request, send_file, jsonify, current_app, Response
 from video_processor import download_full_video, trim_video, get_video_duration
 import os
 import logging
@@ -10,6 +10,10 @@ import threading
 import time
 from datetime import datetime
 from progress_tracker import progress_tracker
+from pathlib import Path
+
+
+
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -19,9 +23,36 @@ app = Flask(__name__,
     template_folder='templates'
 )
 
-# Configure folders
-UPLOAD_FOLDER = 'uploads'
-TEMP_FOLDER = 'temp'
+def get_downloads_path():
+    """Get user's Downloads folder path"""
+    try:
+        # Get the downloads folder path based on OS
+        if os.name == 'nt':  # Windows
+            import winreg
+            sub_key = r'SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Shell Folders'
+            downloads_guid = '{374DE290-123F-4565-9164-39C4925E467B}'
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, sub_key) as key:
+                downloads_path = winreg.QueryValueEx(key, downloads_guid)[0]
+        else:  # Linux/Mac
+            downloads_path = str(Path.home() / "Downloads")
+        
+        # Create a subfolder for our app
+        app_downloads = os.path.join(downloads_path, "video_processor")
+        if not os.path.exists(app_downloads):
+            os.makedirs(app_downloads)
+            
+        return app_downloads
+    except Exception as e:
+        logging.error(f"Error getting downloads path: {str(e)}")
+        # Fallback to current directory if we can't get Downloads folder
+        return os.path.join(os.getcwd(), "downloads")
+
+# Configure folders using Downloads path
+BASE_DOWNLOAD_PATH = get_downloads_path()
+UPLOAD_FOLDER = os.path.join(BASE_DOWNLOAD_PATH, 'uploads')
+TEMP_FOLDER = os.path.join(BASE_DOWNLOAD_PATH, 'temp')
+
+# Create folders if they don't exist
 for folder in [UPLOAD_FOLDER, TEMP_FOLDER]:
     if not os.path.exists(folder):
         os.makedirs(folder)
@@ -322,6 +353,49 @@ def cleanup():
             'success': False,
             'message': f"Error during cleanup: {str(e)}"
         }), 500
+    
+def cleanup_old_files(max_age_days=7):
+    """Clean up files older than max_age_days"""
+    try:
+        current_time = time.time()
+        for folder in [app.config['UPLOAD_FOLDER'], app.config['TEMP_FOLDER']]:
+            for filename in os.listdir(folder):
+                filepath = os.path.join(folder, filename)
+                file_age_days = (current_time - os.path.getmtime(filepath)) / (24 * 3600)
+                
+                if file_age_days > max_age_days:
+                    try:
+                        if os.path.isfile(filepath):
+                            os.remove(filepath)
+                        elif os.path.isdir(filepath):
+                            shutil.rmtree(filepath)
+                    except Exception as e:
+                        logging.error(f"Error removing old file {filepath}: {str(e)}")
+    except Exception as e:
+        logging.error(f"Error during cleanup: {str(e)}")
+
+# Add this route to manually trigger cleanup
+@app.route('/cleanup-old-files', methods=['POST'])
+def trigger_cleanup():
+    try:
+        cleanup_old_files()
+        return jsonify({
+            'success': True,
+            'message': 'Old files cleaned up successfully'
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'Error during cleanup: {str(e)}'
+        }), 500
+
+# Initialize cleanup on first request
+def cleanup_init():
+    with app.app_context():
+        cleanup_old_files()
+
+# Call cleanup_init when app starts
+cleanup_init()
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
