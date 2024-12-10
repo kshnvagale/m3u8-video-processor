@@ -333,18 +333,22 @@ document.addEventListener('DOMContentLoaded', () => {
                         // Hide progress container
                         progressContainer.style.display = 'none';
                         
-                        // Show download link if available
-                        if (data.download_url) {
-                            downloadContainer.innerHTML = `
-                                <a href="${data.download_url}" class="download-btn">Download Processed Videos</a>
-                            `;
-                        }
-                        
-                        // Show success message
-                        statusDiv.innerHTML = '<div class="success-message">Video processed successfully!</div>';
+                        // Show success message with file information
+                        statusDiv.innerHTML = '<div class="success-message">Video processing complete! Files have been saved to your Downloads/video_processor folder.</div>';
                         
                         // Re-enable the process button
                         processBtn.disabled = false;
+                        
+                        // Create messages for each saved file
+                        if (data.output_files && data.output_files.length > 0) {
+                            const fileList = data.output_files.map(file => `<div>${file}</div>`).join('');
+                            downloadContainer.innerHTML = `
+                                <div class="saved-files">
+                                    <p>Saved files:</p>
+                                    ${fileList}
+                                </div>
+                            `;
+                        }
                     },
                     onError: (error) => {
                         progressContainer.style.display = 'none';

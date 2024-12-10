@@ -288,24 +288,23 @@ def process_video():
                 if not output_files:
                     raise Exception("No output files were created")
                 
-                # Create zip file
-                zip_filename = f"asl_{source_video}_segment-{segment_number}_zip.zip"
-                zip_path = os.path.join(app.config['TEMP_FOLDER'], zip_filename)
-                
-                with zipfile.ZipFile(zip_path, 'w') as zipf:
-                    for file in output_files:
-                        if os.path.exists(file):
-                            zipf.write(file, os.path.basename(file))
-                        else:
-                            logging.error(f"Output file not found: {file}")
-                
-                if not os.path.exists(zip_path):
-                    raise Exception("Failed to create zip file")
-                
+                # Move processed files to downloads folder
+                for file in output_files:
+                    if os.path.exists(file):
+                        # Get the filename from the full path
+                        filename = os.path.basename(file)
+                        # Create destination path in downloads folder
+                        destination = os.path.join(BASE_DOWNLOAD_PATH, filename)
+                        # Move the file
+                        shutil.move(file, destination)
+                    else:
+                        logging.error(f"Output file not found: {file}")
+
                 return jsonify({
                     'success': True,
-                    'message': 'Processing started',
-                    'process_id': process_id
+                    'message': 'Processing complete',
+                    'process_id': process_id,
+                    'output_files': [os.path.basename(f) for f in output_files]
                 })
                 
             except Exception as e:

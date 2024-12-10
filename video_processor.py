@@ -276,7 +276,7 @@ def get_video_duration(file_path: str) -> str:
 def calculate_default_crop_areas(video_width: int, video_height: int) -> dict:
     """Calculate default crop areas for screen and webcam"""
     # Screen takes up most of the space (80% width, full height)
-    screen_width = int(video_width * 0.8)
+    screen_width = int(video_width * 1.0)
     screen_height = video_height
     screen_x = 0
     screen_y = 0
