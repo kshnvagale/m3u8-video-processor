@@ -5,6 +5,7 @@ import logging
 import time
 import shutil
 import re
+import json
 from typing import List, Dict
 from progress_tracker import progress_tracker
 from flask import current_app
@@ -193,16 +194,38 @@ def trim_video(input_file: str, screen_output: str, webcam_output: str,
             "message": "Processing screen share video...",
             "progress": 0
         })
+
+        # Get video info
+        video_info = get_video_info(input_path)
+        if not video_info:
+            raise Exception("Could not get video information")
         
         # Process screen share area
         screen_crop = crop_data['screen']
+
+        # Build filter string with quality checks
+        screen_filters = [
+            f'crop={int(screen_crop["width"])}:{int(screen_crop["height"])}:{int(screen_crop["x"])}:{int(screen_crop["y"])}'
+        ]
+
+        # Add FPS filter if needed
+        if video_info['fps'] > 30:
+            screen_filters.append('fps=30')
+            
+        # Add bitrate control if needed
+        bitrate_args = []
+        if video_info['bitrate'] > 600:
+            bitrate_args = ['-b:v', '600k']
+        
         screen_command = [
             'ffmpeg',
             '-i', input_path,
             '-ss', start_time,
             '-to', end_time,
-            '-filter:v', f'crop={int(screen_crop["width"])}:{int(screen_crop["height"])}:{int(screen_crop["x"])}:{int(screen_crop["y"])}',
-            '-an',
+            '-filter:v', ','.join(screen_filters),
+            *bitrate_args,
+            '-c:v', 'libx264', # for h264
+            '-an',  # No audio for screen share
             '-y',
             screen_output
         ]
@@ -220,13 +243,25 @@ def trim_video(input_file: str, screen_output: str, webcam_output: str,
         
         # Process webcam area
         webcam_crop = crop_data['webcam']
+        
+        # Build filter string with quality checks for webcam
+        webcam_filters = [
+            f'crop={int(webcam_crop["width"])}:{int(webcam_crop["height"])}:{int(webcam_crop["x"])}:{int(webcam_crop["y"])}'
+        ]
+        
+        # Add FPS filter if needed
+        if video_info['fps'] > 30:
+            webcam_filters.append('fps=30')
+
         webcam_command = [
             'ffmpeg',
             '-i', input_path,
             '-ss', start_time,
             '-to', end_time,
-            '-filter:v', f'crop={int(webcam_crop["width"])}:{int(webcam_crop["height"])}:{int(webcam_crop["x"])}:{int(webcam_crop["y"])}',
-            '-c:a', 'copy',
+            '-filter:v', ','.join(webcam_filters),
+            *bitrate_args,
+            '-c:v', 'libx264', # for h264
+            '-c:a', 'aac',  # Force AAC audio codec for webcam
             '-y',
             webcam_output
         ]
@@ -301,3 +336,34 @@ def calculate_default_crop_areas(video_width: int, video_height: int) -> dict:
             'height': webcam_height
         }
     }
+
+def get_video_info(file_path: str) -> dict:
+    """Get video metadata using FFprobe"""
+    try:
+        cmd = [
+            'ffprobe',
+            '-v', 'error',
+            '-select_streams', 'v:0',
+            '-show_entries', 'stream=codec_name,r_frame_rate,bit_rate',
+            '-of', 'json',
+            file_path
+        ]
+        
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        video_info = json.loads(result.stdout)
+        
+        # Parse frame rate
+        fps_fraction = video_info['streams'][0]['r_frame_rate'].split('/')
+        fps = float(fps_fraction[0]) / float(fps_fraction[1])
+        
+        # Convert bitrate from bits/s to Kbps
+        bitrate = int(video_info['streams'][0]['bit_rate']) / 1000
+        
+        return {
+            'codec': video_info['streams'][0]['codec_name'],
+            'fps': fps,
+            'bitrate': bitrate
+        }
+    except Exception as e:
+        logging.error(f"Error getting video info: {e}")
+        return None
