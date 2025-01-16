@@ -359,11 +359,17 @@ def get_video_info(file_path: str) -> dict:
         # Convert bitrate from bits/s to Kbps
         bitrate = int(video_info['streams'][0]['bit_rate']) / 1000
         
-        return {
+        info = {
             'codec': video_info['streams'][0]['codec_name'],
             'fps': fps,
             'bitrate': bitrate
         }
+
+        # Log processed info
+        print("Video Info:", json.dumps(info, indent=2))
+
+        return info
+
     except Exception as e:
         logging.error(f"Error getting video info: {e}")
         return None
