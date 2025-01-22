@@ -214,8 +214,8 @@ def trim_video(input_file: str, screen_output: str, webcam_output: str,
             
         # Add bitrate control if needed
         bitrate_args = []
-        if video_info['bitrate'] > 590:
-            bitrate_args = ['-b:v', '580k']
+        if video_info['bitrate'] > 250:
+            bitrate_args = ['-b:v', '250k']
         
         screen_command = [
             'ffmpeg',
@@ -252,6 +252,9 @@ def trim_video(input_file: str, screen_output: str, webcam_output: str,
         # Add FPS filter if needed
         if video_info['fps'] > 30:
             webcam_filters.append('fps=30')
+
+        if video_info['bitrate'] > 100:
+            bitrate_args = ['-b:v', '100k']
 
         webcam_command = [
             'ffmpeg',
