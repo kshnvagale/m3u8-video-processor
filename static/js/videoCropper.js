@@ -151,12 +151,12 @@ const updateFromInput = (e) => {
                 x: 0,
                 y: 0,
                 width: width * 0.8,
-                height: height * 0.8
+                height: height * 1
             };
         } else {
             // Default webcam area (top right corner)
             const webcamWidth = width * 0.2;
-            const webcamHeight = height * 0.2;
+            const webcamHeight = height * 0.25;
             return {
                 x: width - webcamWidth,
                 y: 0,

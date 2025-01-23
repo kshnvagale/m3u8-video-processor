@@ -3,210 +3,271 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Video Processor</title>
+    <title>Video Processor v2.0✨</title>
     
     <!-- Styles -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     
     <!-- Cropper.js Library -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
 </head>
 <body>
-    <div class="container">
-        <h1>Video Processor</h1>
-        
-        <!-- Part 1: Download Full Video -->
-        <div class="section">
-            <h2>Part 1: Download Full Video</h2>
-            <div class="form-container">
-                <div class="input-group">
-                    <label for="video-url">Video URL (m3u8):</label>
-                    <input type="text" id="video-url" placeholder="Enter video URL">
-                </div>
-                <div class="input-group">
-                    <label for="filename">Save as:</label>
-                    <input type="text" id="filename" placeholder="Enter filename (without extension)">
-                </div>
-                <button id="download-btn" class="primary-btn">Download & Convert</button>
-            </div>
+    <div class="app-container">
+        <!-- Header Section -->
+        <header class="app-header">
+            <h1><i class="fas fa-video"></i> Video Processor <span class="version-tag">v2.0✨</span></h1>
+        </header>
 
-            <div id="download-progress-container" class="progress-container" style="display: none;">
-                <div class="loader"></div>
-                <div id="download-progress-stage" class="progress-stage">
-                    Downloading video...
+        <main class="main-content">
+            <!-- Part 1: Download Full Video -->
+            <section class="card">
+                <div class="card-header">
+                    <h2><i class="fas fa-download"></i> Download Video</h2>
+                    <span class="help-text">Video will be downloaded to Downloads/video_processor/uploads</span>
                 </div>
-                <div class="progress-bar">
-                    <div class="progress-fill"></div>
-                    <div class="progress-percent">0%</div>
-                </div>
-                <div class="progress-stats">
-                    <div id="download-progress-details" class="progress-details">
-                        <div class="stat-item">Time Elapsed: <span id="time-elapsed">00:00:00</span></div>
-                        <div class="stat-item">Time Left: <span id="time-left">Calculating...</span></div>
-                        <div class="stat-item">Speed: <span id="download-speed">Calculating...</span></div>
+                
+                <div class="card-body">
+                    <div class="form-container">
+                        <div class="input-group">
+                            <label for="video-url">
+                                <i class="fas fa-link"></i> Video URL (m3u8):
+                            </label>
+                            <input type="text" id="video-url" placeholder="Enter video URL" class="modern-input">
+                        </div>
+                        <div class="input-group">
+                            <label for="filename">
+                                <i class="fas fa-file"></i> Save as:
+                            </label>
+                            <input type="text" id="filename" placeholder="Enter filename (without extension)" class="modern-input">
+                        </div>
+                        <button id="download-btn" class="primary-btn">
+                            <i class="fas fa-download"></i> Download & Convert
+                        </button>
                     </div>
-                </div>
-            </div>
 
-            <div id="download-status" class="status"></div>
-        </div>
-
-        <!-- Part 2: Trim and Crop Video -->
-        <div class="section">
-            <h2>Part 2: Trim and Crop Video</h2>
-            <div class="form-container">
-                <!-- Video Selection -->
-                <div class="input-group">
-                    <label for="video-select">Select Video:</label>
-                    <select id="video-select">
-                        <option value="">Select a video...</option>
-                        {% for file in mp4_files %}
-                        <option value="{{ file }}">{{ file }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-
-                <!-- Video Info -->
-                <div id="video-info" class="video-info" style="display: none;">
-                    <p>Video Duration: <span id="video-duration">00:00:00</span></p>
-                </div>
-
-                <!-- Video Preview -->
-                <div class="video-preview">
-                    <video id="video-player" controls style="display: none;">
-                        <source id="video-source" src="" type="video/mp4">
-                        Your browser does not support the video tag.
-                    </video>
-                </div>
-
-                <!-- Time Selection -->
-                <div class="time-controls">
-                    <label>(HH:MM:SS)</label>
-                    <div class="input-group">
-                        <label for="start-time">Start:</label>
-                        <input type="text" id="start-time" placeholder="00:00:00">
-                        <button id="set-start-time" class="time-set-btn">Set Start</button>
-                        <label for="end-time">End:</label>
-                        <input type="text" id="end-time" placeholder="00:00:00">
-                        <button id="set-end-time" class="time-set-btn">Set End</button>
-                        <label for="segment-number">Segment number:</label>
-                        <input type="number" id="trim-filename" name="trim-filename" min="1" required>
+                    <div id="download-progress-container" class="progress-container" style="display: none;">
+                        <div class="progress-header">
+                            <div class="loader"></div>
+                            <div id="download-progress-stage" class="progress-stage">
+                                <i class="fas fa-spinner fa-spin"></i> Downloading video...
+                            </div>
+                        </div>
+                        <div class="progress-bar">
+                            <div class="progress-fill"></div>
+                            <div class="progress-percent">0%</div>
+                        </div>
+                        <div class="progress-stats">
+                            <div id="download-progress-details" class="progress-details">
+                                <div class="stat-item">
+                                    <i class="fas fa-clock"></i> Time Elapsed: <span id="time-elapsed">00:00:00</span>
+                                </div>
+                                <div class="stat-item">
+                                    <i class="fas fa-hourglass-half"></i> Time Left: <span id="time-left">Calculating...</span>
+                                </div>
+                                <div class="stat-item">
+                                    <i class="fas fa-tachometer-alt"></i> Speed: <span id="download-speed">Calculating...</span>
+                                </div>
+                            </div>
+                        </div>
                     </div>
+
+                    <div id="download-status" class="status"></div>
+                </div>
+            </section>
+
+            <!-- Part 2: Trim and Crop Video -->
+            <section class="card">
+                <div class="card-header">
+                    <h2><i class="fas fa-cut"></i> Trim and Crop Video</h2>
+                </div>
+                
+                <div class="card-body">
+                    <!-- Video Selection -->
                     <div class="input-group">
-                       
+                        <label for="video-select">
+                            <i class="fas fa-film"></i> Select Video:
+                        </label>
+                        <select id="video-select" class="modern-select">
+                            <option value="">Select a video...</option>
+                            {% for file in mp4_files %}
+                            <option value="{{ file }}">{{ file }}</option>
+                            {% endfor %}
+                        </select>
                     </div>
-                    <div class="input-group">
+
+                    <!-- Video Info -->
+                    <div id="video-info" class="video-info" style="display: none;">
+                        <p><i class="fas fa-clock"></i> Video Duration: <span id="video-duration">00:00:00</span></p>
+                    </div>
+
+                    <!-- Video Preview -->
+                    <div class="video-preview">
+                        <video id="video-player" controls style="display: none;">
+                            <source id="video-source" src="" type="video/mp4">
+                            Your browser does not support the video tag.
+                        </video>
+                    </div>
+
+                    <!-- Time Selection -->
+                    <div class="time-controls">
+                        <div class="time-format-label">
+                            <i class="fas fa-clock"></i> Time Format: HH:MM:SS
+                        </div>
+                        <div class="time-inputs">
+                            <div class="time-input-group">
+                                <label for="start-time">Start Time:</label>
+                                <div class="time-input-wrapper">
+                                    <input type="text" id="start-time" placeholder="00:00:00" class="modern-input">
+                                    <button id="set-start-time" class="time-set-btn">
+                                        <i class="fas fa-flag-checkered"></i> Set
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="time-input-group">
+                                <label for="end-time">End Time:</label>
+                                <div class="time-input-wrapper">
+                                    <input type="text" id="end-time" placeholder="00:00:00" class="modern-input">
+                                    <button id="set-end-time" class="time-set-btn">
+                                        <i class="fas fa-flag-checkered"></i> Set
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="time-input-group">
+                                <label for="trim-filename">Segment Number:</label>
+                                <input type="number" id="trim-filename" name="trim-filename" min="1" required class="modern-input">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Crop Configuration -->
+                    <div class="crop-section" style="display: none;">
+                        <h3><i class="fas fa-crop-alt"></i> Configure Crop Areas</h3>
                         
-                    </div>
-                </div>
+                        <canvas id="screenshot-canvas" style="display: none;"></canvas>
 
-                <!-- Crop Configuration -->
-                <div class="crop-section" style="display: none;">
-                    <h3>Configure Crop Areas</h3>
-                    
-                    <!-- Screenshot canvas for cropping -->
-                    <canvas id="screenshot-canvas" style="display: none;"></canvas>
-
-                    <!-- Screen share crop -->
-                    <div class="crop-area">
-                        <h4>Screen Share Area</h4>
-                        <div class="crop-preview-container">
-                            <div id="screen-crop-preview"></div>
-                        </div>
-                        <button id="adjust-screen-crop" class="secondary-btn">Adjust Screen Area</button>
-                    </div>
-
-                    <!-- Webcam crop -->
-                    <div class="crop-area">
-                        <h4>Webcam Area</h4>
-                        <div class="crop-preview-container">
-                            <div id="webcam-crop-preview"></div>
-                        </div>
-                        <button id="adjust-webcam-crop" class="secondary-btn">Adjust Webcam Area</button>
-                    </div>
-
-                    <!-- Crop Modal -->
-                    <div id="crop-modal" class="modal">
-                        <div class="modal-content">
-                            <span class="close">&times;</span>
-                            
-                            <div class="modal-header">
-                                <h3>Adjust Crop Area</h3>
+                        <div class="crop-areas">
+                            <!-- Screen share crop -->
+                            <div class="crop-area">
+                                <h4><i class="fas fa-desktop"></i> Screen Share Area</h4>
+                                <div class="crop-preview-container">
+                                    <div id="screen-crop-preview"></div>
+                                </div>
+                                <button id="adjust-screen-crop" class="secondary-btn">
+                                    <i class="fas fa-crop"></i> Adjust Screen Area
+                                </button>
                             </div>
-                    
-                            <div class="crop-container">
-                                <img id="crop-image" src="">
+
+                            <!-- Webcam crop -->
+                            <div class="crop-area">
+                                <h4><i class="fas fa-camera"></i> Webcam Area</h4>
+                                <div class="crop-preview-container">
+                                    <div id="webcam-crop-preview"></div>
+                                </div>
+                                <button id="adjust-webcam-crop" class="secondary-btn">
+                                    <i class="fas fa-crop"></i> Adjust Webcam Area
+                                </button>
                             </div>
-                    
-                            <div class="modal-footer">
-                                <div class="crop-controls">
-                                    <div class="aspect-ratio-control">
-                                        <label>
-                                            <input type="checkbox" id="maintain-aspect-ratio" checked>
-                                            Maintain Aspect Ratio
+                        </div>
+
+                        <!-- Crop Modal -->
+                        <div id="crop-modal" class="modal">
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <h3><i class="fas fa-crop"></i> Adjust Crop Area</h3>
+                                    <span class="close"><i class="fas fa-times"></i></span>
+                                </div>
+                        
+                                <div class="crop-container">
+                                    <img id="crop-image" src="">
+                                </div>
+                        
+                                <div class="modal-footer">
+                                    <div class="crop-controls">
+                                        <div class="aspect-ratio-control">
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="maintain-aspect-ratio" checked>
+                                                <span class="checkbox-text">
+                                                    <i class="fas fa-link"></i> Maintain Aspect Ratio
+                                                </span>
+                                            </label>
                                             <div class="crop-dimensions">
                                                 <div class="dimension-group">
-                                                    <label>X: <input type="number" id="crop-x" min="0"></label>
-                                                    <label>Y: <input type="number" id="crop-y" min="0"></label>
+                                                    <label>X: <input type="number" id="crop-x" min="0" class="modern-input"></label>
+                                                    <label>Y: <input type="number" id="crop-y" min="0" class="modern-input"></label>
                                                 </div>
                                                 <div class="dimension-group">
-                                                    <label>Width: <input type="number" id="crop-width" min="1"></label>
-                                                    <label>Height: <input type="number" id="crop-height" min="1"></label>
+                                                    <label>Width: <input type="number" id="crop-width" min="1" class="modern-input"></label>
+                                                    <label>Height: <input type="number" id="crop-height" min="1" class="modern-input"></label>
                                                 </div>
                                             </div>
-                                        </label>
+                                        </div>
                                     </div>
-                                    
+                                    <button id="save-crop" class="primary-btn">
+                                        <i class="fas fa-save"></i> Save Crop
+                                    </button>
                                 </div>
-                                <button id="save-crop" class="primary-btn">Save Crop</button>
                             </div>
                         </div>
                     </div>
-                </div>
 
-                
-
-                <!-- Process Buttons -->
-                <button id="preview-crops" class="secondary-btn">Preview Crops</button>
-                <button id="process-btn" class="primary-btn">Process Video</button>
-                </div>
-
-                <!-- Clear Cache Section -->
-                <div id="cleanup-section" style="text-align: center;">
-                    <div id="cleanup-status" class="status"></div>
-                    <button id="cleanup-btn" class="tertiary-btn">Clear Cache & Downloads</button>
-                </div>
-                
-                <!-- Confirmation Modal -->
-                <div id="confirm-cleanup-modal" class="modal">
-                    <div class="modal-content" style="max-width: 400px; margin: 15% auto; height: auto;">
-                        <div class="modal-header">
-                            <h3>Confirm Deletion</h3>
-                            <span class="close">&times;</span>
-                        </div>
-                        <div class="modal-body" style="padding: 20px;">
-                            <p>Are you sure you want to delete all videos? This will remove both source videos and processed segments. This action cannot be undone!</p>
-                        </div>
-                        <div class="modal-footer" style="padding: 20px; display: flex; justify-content: flex-end; gap: 10px;">
-                            <button id="cancel-cleanup" class="secondary-btn">Cancel</button>
-                            <button id="confirm-cleanup" class="primary-btn">Delete</button>
-                        </div>
+                    <!-- Action Buttons -->
+                    <div class="action-buttons">
+                        <button id="preview-crops" class="secondary-btn">
+                            <i class="fas fa-eye"></i> Preview Crops
+                        </button>
+                        <button id="process-btn" class="primary-btn">
+                            <i class="fas fa-cog"></i> Process Video
+                        </button>
                     </div>
                 </div>
+            </section>
 
             <!-- Processing Progress -->
             <div id="process-progress-container" class="progress-container" style="display: none;">
-                <div class="loader"></div>
-                <div id="process-progress-stage" class="progress-stage">Processing video...</div>
+                <div class="progress-header">
+                    <div class="loader"></div>
+                    <div id="process-progress-stage" class="progress-stage">
+                        <i class="fas fa-cog fa-spin"></i> Processing video...
+                    </div>
+                </div>
             </div>
 
             <div id="process-status" class="status"></div>
             <div id="download-container"></div>
+
+            <!-- Clear Cache Section -->
+            <section class="cleanup-section">
+                <div id="cleanup-status" class="status"></div>
+                <button id="cleanup-btn" class="tertiary-btn">
+                    <i class="fas fa-trash-alt"></i> Clear Cache & Downloads
+                </button>
+            </section>
+        </main>
+
+        <!-- Confirmation Modal -->
+        <div id="confirm-cleanup-modal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3><i class="fas fa-exclamation-triangle"></i> Confirm Deletion</h3>
+                    <span class="close"><i class="fas fa-times"></i></span>
+                </div>
+                <div class="modal-body">
+                    <p><i class="fas fa-info-circle"></i> Are you sure you want to delete all videos? This will remove both source videos and processed segments. This action cannot be undone!</p>
+                </div>
+                <div class="modal-footer">
+                    <button id="cancel-cleanup" class="secondary-btn">
+                        <i class="fas fa-times"></i> Cancel
+                    </button>
+                    <button id="confirm-cleanup" class="primary-btn">
+                        <i class="fas fa-trash-alt"></i> Delete
+                    </button>
+                </div>
+            </div>
         </div>
     </div>
-
-    
 
     <!-- Custom Scripts -->
     <script src="{{ url_for('static', filename='js/videoCropper.js') }}" defer></script>
