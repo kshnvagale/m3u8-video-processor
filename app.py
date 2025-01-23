@@ -12,16 +12,14 @@ from datetime import datetime
 from progress_tracker import progress_tracker
 from pathlib import Path
 
-
-
-
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-
+# Create Flask app
 app = Flask(__name__,
     static_folder='static',
     template_folder='templates'
 )
+
+# Get logger from video_processor
+logger = logging.getLogger('VideoProcessor')
 
 def get_downloads_path():
     """Get user's Downloads folder path"""
@@ -43,7 +41,7 @@ def get_downloads_path():
             
         return app_downloads
     except Exception as e:
-        logging.error(f"Error getting downloads path: {str(e)}")
+        logger.error(f"Error getting downloads path: {str(e)}")
         # Fallback to current directory if we can't get Downloads folder
         return os.path.join(os.getcwd(), "downloads")
 
@@ -126,7 +124,7 @@ def download(filename):
             download_name=filename
         )
     except Exception as e:
-        logging.error(f"Download error: {str(e)}")
+        logger.error(f"Download error: {str(e)}")
         return jsonify({
             'success': False,
             'message': str(e)
@@ -141,7 +139,7 @@ def download_processed(filename):
         zip_path = os.path.join(app.config['TEMP_FOLDER'], filename)
         
         if not os.path.exists(zip_path):
-            logging.error(f"Zip file not found: {zip_path}")
+            logger.error(f"Zip file not found: {zip_path}")
             return jsonify({
                 'success': False,
                 'message': 'Download file not found'
@@ -160,10 +158,10 @@ def download_processed(filename):
                 try:
                     os.remove(zip_path)
                 except Exception as e:
-                    logging.error(f"Error removing zip file: {str(e)}")
+                    logger.error(f"Error removing zip file: {str(e)}")
                     
     except Exception as e:
-        logging.error(f"Error in download_processed: {str(e)}")
+        logger.error(f"Error in download_processed: {str(e)}")
         return jsonify({
             'success': False,
             'message': f"Download error: {str(e)}"
@@ -191,14 +189,14 @@ def get_duration_route(filename):
         })
         
     except FileNotFoundError as e:
-        logging.error(f"File not found error: {str(e)}")
+        logger.error(f"File not found error: {str(e)}")
         return jsonify({
             'success': False,
             'message': str(e)
         }), 404
         
     except Exception as e:
-        logging.error(f"Error getting video duration: {str(e)}")
+        logger.error(f"Error getting video duration: {str(e)}")
         return jsonify({
             'success': False,
             'message': f"Error getting video duration: {str(e)}"
@@ -229,7 +227,7 @@ def process_video():
                 try:
                     download_full_video(video_url, filename, process_id)
                 except Exception as e:
-                    logging.error(f"Download error: {str(e)}")
+                    logger.error(f"Download error: {str(e)}")
                     progress_tracker.update_progress(process_id, {
                         "status": "error",
                         "message": f"Error: {str(e)}"
@@ -301,7 +299,7 @@ def process_video():
                             # Delete the individual video files after adding to zip
                             os.remove(file)
                         else:
-                            logging.error(f"Output file not found: {file}")
+                            logger.error(f"Output file not found: {file}")
                 
                 # Clean up temp directory
                 if os.path.exists(temp_dir):
@@ -329,7 +327,7 @@ def process_video():
                 raise e
                     
     except Exception as e:
-        logging.error(f"Process video error: {str(e)}")
+        logger.error(f"Process video error: {str(e)}")
         return jsonify({
             'success': False,
             'message': str(e)
@@ -363,7 +361,7 @@ def cleanup():
         })
         
     except Exception as e:
-        logging.error(f"Cleanup error: {str(e)}")
+        logger.error(f"Cleanup error: {str(e)}")
         return jsonify({
             'success': False,
             'message': f"Error during cleanup: {str(e)}"
@@ -385,9 +383,9 @@ def cleanup_old_files(max_age_days=7):
                         elif os.path.isdir(filepath):
                             shutil.rmtree(filepath)
                     except Exception as e:
-                        logging.error(f"Error removing old file {filepath}: {str(e)}")
+                        logger.error(f"Error removing old file {filepath}: {str(e)}")
     except Exception as e:
-        logging.error(f"Error during cleanup: {str(e)}")
+        logger.error(f"Error during cleanup: {str(e)}")
 
 # Add this route to manually trigger cleanup
 @app.route('/cleanup-old-files', methods=['POST'])
@@ -413,4 +411,15 @@ def cleanup_init():
 cleanup_init()
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    # Create required directories
+    os.makedirs(os.path.join(get_downloads_path(), 'uploads'), exist_ok=True)
+    os.makedirs(os.path.join(get_downloads_path(), 'temp'), exist_ok=True)
+    
+    print("\n" + "="*50)
+    print("\n")
+    print("🚀 Server started! ✨✨ Version: 2.0 ✨✨ \n")
+    print("📱 Visit: http://localhost:5001")
+    print("\n")
+    print("="*50 + "\n")
+    
+    app.run(debug=True, host='0.0.0.0', port=5001)

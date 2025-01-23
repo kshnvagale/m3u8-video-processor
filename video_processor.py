@@ -16,6 +16,45 @@ import threading
 import concurrent.futures
 from urllib.parse import urljoin
 
+# Configure custom logger
+class EmojiFormatter(logging.Formatter):
+    """Custom formatter that adds emojis to log messages"""
+    FORMATS = {
+        logging.ERROR: "❌ %(message)s",
+        logging.WARNING: "⚠️ %(message)s",
+        logging.INFO: "ℹ️ %(message)s",
+        logging.DEBUG: "🔍 %(message)s"
+    }
+
+    def format(self, record):
+        log_fmt = self.FORMATS.get(record.levelno)
+        formatter = logging.Formatter(log_fmt)
+        return formatter.format(record)
+
+def setup_logger():
+    """Setup custom logger with emoji formatting"""
+    logger = logging.getLogger('VideoProcessor')
+    logger.setLevel(logging.INFO)
+    
+    # Clear any existing handlers
+    logger.handlers = []
+    
+    # Prevent propagation to root logger (prevents duplicate logs)
+    logger.propagate = False
+    
+    # Console handler with emoji formatter
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(EmojiFormatter())
+    logger.addHandler(console_handler)
+    
+    # Suppress Werkzeug logging except for errors
+    werkzeug_logger = logging.getLogger('werkzeug')
+    werkzeug_logger.setLevel(logging.ERROR)
+    
+    return logger
+
+logger = setup_logger()
+
 def get_downloads_path():
     """Get user's Downloads folder path"""
     try:
@@ -86,7 +125,7 @@ def get_m3u8_info(url: str) -> Tuple[int, List[str], float]:
 
         return len(segments), [seg.uri for seg in segments], total_duration
     except Exception as e:
-        logging.error(f"Error parsing M3U8: {e}")
+        logger.error(f"Error parsing M3U8: {e}")
         return 0, [], 0
 
 def download_segment(segment_info: Tuple[int, str, str]) -> bool:
@@ -103,12 +142,13 @@ def download_segment(segment_info: Tuple[int, str, str]) -> bool:
                     f.write(chunk)
         return True
     except Exception as e:
-        logging.error(f"Error downloading segment {index}: {str(e)}")
+        logger.debug(f"⚠️ Failed to download segment {index}")  # Only log at debug level
         return False
 
 def merge_segments(temp_dir: str, output_path: str) -> bool:
     """Merge downloaded segments into final video"""
     try:
+        logger.info("\n🔄 Merging segments...")
         # Create a file list for FFmpeg
         segments = sorted([f for f in os.listdir(temp_dir) if f.endswith('.ts')])
         file_list = os.path.join(temp_dir, 'segments.txt')
@@ -131,7 +171,7 @@ def merge_segments(temp_dir: str, output_path: str) -> bool:
         subprocess.run(cmd, check=True, capture_output=True)
         return True
     except Exception as e:
-        logging.error(f"Error merging segments: {str(e)}")
+        logger.error(f"Error merging segments: {str(e)}")
         return False
 
 def get_optimal_workers():
@@ -173,6 +213,26 @@ def adjust_workers(current_workers: int, cpu_percent: float, memory_percent: flo
         return min(32, current_workers + 2)
     return current_workers
 
+def generate_download_report(total_segments: int, elapsed_time: float, final_speed: float, output_path: str) -> str:
+    """Generate a formatted download report with emojis"""
+    file_size = os.path.getsize(output_path) if os.path.exists(output_path) else 0
+    file_size_mb = file_size / (1024 * 1024)
+    avg_speed_mb = final_speed / (1024 * 1024)
+    
+    report = [
+        "\n" + "="*50,
+        "📥 Download Complete! 🎉",
+        "="*50,
+        f"\n📊 Download Statistics:",
+        f"   ├─ 🎬 Total Segments: {total_segments}",
+        f"   ├─ ⏱️ Time Taken: {format_time(int(elapsed_time))}",
+        f"   ├─ 📦 File Size: {file_size_mb:.2f} MB",
+        f"   ├─ ⚡ Average Speed: {format_speed(final_speed)}",
+        f"   └─ 🎯 Efficiency: {avg_speed_mb:.1f} MB/s ({total_segments/elapsed_time:.1f} segments/s)",
+        "="*50 + "\n"
+    ]
+    return "\n".join(report)
+
 def download_full_video(video_url: str, filename: str, process_id: str) -> str:
     """Download video directly using parallel segment downloading"""
     output_path = os.path.join(get_downloads_path(), 'uploads', filename)
@@ -184,9 +244,15 @@ def download_full_video(video_url: str, filename: str, process_id: str) -> str:
     
     try:
         # Get M3U8 info
+        logger.info("\n🔍 Starting download process...")
+        logger.info(f"📝 Processing: {filename}")
         total_segments, segment_urls, total_duration = get_m3u8_info(video_url)
         if total_segments == 0 or not segment_urls:
-            raise Exception("No segments found in M3U8 playlist")
+            raise Exception("No segments found in playlist")
+        
+        logger.info(f"\n📋 Playlist Analysis:")
+        logger.info(f"   ├─ Total Segments: {total_segments}")
+        logger.info(f"   └─ Duration: {format_time(int(total_duration))}\n")
         
         # Prepare segment download tasks
         base_url = video_url.rsplit('/', 1)[0] + '/'
@@ -241,7 +307,7 @@ def download_full_video(video_url: str, filename: str, process_id: str) -> str:
                     
                     last_adjustment_time = current_time
                 
-                # Update progress
+                # Update progress with emojis
                 if current_time - last_update_time >= update_interval:
                     progress = (downloaded_segments / total_segments) * 100
                     elapsed_time = current_time - start_time
@@ -264,60 +330,64 @@ def download_full_video(video_url: str, filename: str, process_id: str) -> str:
                         # Get current system load
                         cpu_percent, memory_percent = get_system_load()
                         
+                        # Status emoji based on progress
+                        status_emoji = "🚀" if speed > 1024*1024 else "⏳"
+                        
                         progress_data = {
                             "status": "downloading",
                             "progress": progress,
                             "elapsed": format_time(int(elapsed_time)),
                             "remaining": format_time(int(remaining_time)),
                             "speed": format_speed(speed),
-                            "message": f"Downloading: {downloaded_segments}/{total_segments} segments | Workers: {num_workers} | CPU: {cpu_percent:.1f}% | RAM: {memory_percent:.1f}%"
+                            "message": f"{status_emoji} Segments: {downloaded_segments}/{total_segments} | 👥 Workers: {num_workers} | 💻 CPU: {cpu_percent:.1f}% | 🧠 RAM: {memory_percent:.1f}%"
                         }
                         
                         progress_tracker.update_progress(process_id, progress_data)
                         last_update_time = current_time
-                
-                # Small sleep to prevent busy waiting
-                time.sleep(0.1)
+                        last_speed = speed  # Store last speed for final report
         
         finally:
             executor.shutdown(wait=True)
         
         # Verify all segments were downloaded
         if downloaded_segments < total_segments:
-            raise Exception(f"Only {downloaded_segments} of {total_segments} segments were downloaded successfully")
+            raise Exception(f"❌ Download incomplete: {downloaded_segments}/{total_segments} segments")
         
         # Update progress for merging phase
         progress_tracker.update_progress(process_id, {
             "status": "processing",
             "progress": 95,
-            "message": "Merging segments..."
+            "message": "🔄 Merging segments..."
         })
         
         # Merge segments into final video
         if not merge_segments(temp_dir, output_path):
-            raise Exception("Failed to merge segments")
+            raise Exception("❌ Failed to merge segments")
         
-        # Verify the output file exists and has content
-        if not os.path.exists(output_path) or os.path.getsize(output_path) == 0:
-            raise Exception("Download failed: Output file is missing or empty")
+        # Generate and display download report
+        total_time = time.time() - start_time
+        report = generate_download_report(total_segments, total_time, last_speed, output_path)
         
-        # Update final progress
+        # Log report to console
+        logger.info("\n" + report)
+        
+        # Update final progress with report
         progress_tracker.update_progress(process_id, {
             "status": "complete",
             "progress": 100,
-            "message": "Download complete"
+            "message": report
         })
         
         return filename
         
     except Exception as e:
         error_msg = str(e)
-        logging.error(f"Error downloading video: {error_msg}")
+        logger.error(f"Download failed: {error_msg}")
         
         # Update error progress
         progress_tracker.update_progress(process_id, {
             "status": "error",
-            "message": f"Error: {error_msg}"
+            "message": f"❌ Error: {error_msg}"
         })
         
         # Clean up output file if it exists
@@ -330,6 +400,23 @@ def download_full_video(video_url: str, filename: str, process_id: str) -> str:
         # Clean up temporary directory
         if os.path.exists(temp_dir):
             shutil.rmtree(temp_dir)
+
+def get_video_bitrate(file_path: str) -> float:
+    """Get video bitrate in Kbps using FFprobe"""
+    try:
+        cmd = [
+            'ffprobe',
+            '-v', 'error',
+            '-select_streams', 'v:0',
+            '-show_entries', 'stream=bit_rate',
+            '-of', 'default=noprint_wrappers=1:nokey=1',
+            file_path
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        bitrate = float(result.stdout.strip()) / 1000  # Convert to Kbps
+        return bitrate
+    except:
+        return 0
 
 def trim_video(input_file: str, screen_output: str, webcam_output: str, 
                start_time: str, end_time: str, crop_data: Dict, 
@@ -346,21 +433,26 @@ def trim_video(input_file: str, screen_output: str, webcam_output: str,
         if not os.path.exists(input_path):
             raise FileNotFoundError(f"Input file not found: {input_file}")
         
-        # Update progress
-        progress_tracker.update_progress(process_id, {
-            "status": "processing",
-            "message": "Processing screen share video...",
-            "progress": 0
-        })
-
+        logger.info("\n" + "="*50)
+        logger.info("🎬 Starting Video Processing")
+        logger.info("="*50)
+        
         # Get video info
         video_info = get_video_info(input_path)
         if not video_info:
             raise Exception("Could not get video information")
+            
+        logger.info(f"\n📊 Video Information:")
+        logger.info(f"   ├─ 🕒 Time Range: {start_time} to {end_time}")
+        logger.info(f"   ├─ 🎥 Codec: {video_info['codec']}")
+        logger.info(f"   ├─ ⚡ FPS: {video_info['fps']}")
+        logger.info(f"   └─ 📊 Bitrate: {video_info['bitrate']} Kbps\n")
         
         # Process screen share area
         screen_crop = crop_data['screen']
-
+        logger.info("🖥️ Processing Screen Recording...")
+        logger.info("\n")
+        
         # Build filter string with quality checks
         screen_filters = [
             f'crop={int(screen_crop["width"])}:{int(screen_crop["height"])}:{int(screen_crop["x"])}:{int(screen_crop["y"])}'
@@ -377,12 +469,14 @@ def trim_video(input_file: str, screen_output: str, webcam_output: str,
         
         screen_command = [
             'ffmpeg',
+            '-hide_banner',         # Hide FFmpeg compilation details
+            '-loglevel', 'error',   # Only show errors
             '-i', input_path,
             '-ss', start_time,
             '-to', end_time,
             '-filter:v', ','.join(screen_filters),
             *bitrate_args,
-            '-c:v', 'libx264', # for h264
+            '-c:v', 'libx264',
             '-an',  # No audio for screen share
             '-y',
             screen_output
@@ -391,16 +485,26 @@ def trim_video(input_file: str, screen_output: str, webcam_output: str,
         try:
             subprocess.run(screen_command, capture_output=True, text=True, check=True)
             output_files.append(screen_output)
+            
+            # Check screen recording bitrate
+            screen_bitrate = get_video_bitrate(screen_output)
+            logger.info(f"✅ Screen recording processed successfully - Bitrate: {screen_bitrate:.1f} Kbps")
+            if screen_bitrate > 250:
+                logger.warning(f"⚠️ Screen recording bitrate ({screen_bitrate:.1f} Kbps) is higher than recommended (250 Kbps)")
+                logger.warning("⚠️ Please check with tech team to fix this")
+            
             progress_tracker.update_progress(process_id, {
                 "status": "processing",
-                "message": "Processing webcam video...",
+                "message": "🎥 Processing webcam video...",
                 "progress": 50
             })
         except subprocess.CalledProcessError as e:
-            raise Exception(f"FFmpeg error (screen): {e.stderr}")
+            raise Exception(f"❌ Screen processing failed: {e.stderr}")
         
         # Process webcam area
+        logger.info("\n📸 Processing Webcam Recording...")
         webcam_crop = crop_data['webcam']
+        logger.info("\n")
         
         # Build filter string with quality checks for webcam
         webcam_filters = [
@@ -416,13 +520,15 @@ def trim_video(input_file: str, screen_output: str, webcam_output: str,
 
         webcam_command = [
             'ffmpeg',
+            '-hide_banner',         # Hide FFmpeg compilation details
+            '-loglevel', 'error',   # Only show errors
             '-i', input_path,
             '-ss', start_time,
             '-to', end_time,
             '-filter:v', ','.join(webcam_filters),
             *bitrate_args,
-            '-c:v', 'libx264', # for h264
-            '-c:a', 'aac',  # Force AAC audio codec for webcam
+            '-c:v', 'libx264',
+            '-c:a', 'aac',
             '-y',
             webcam_output
         ]
@@ -430,24 +536,41 @@ def trim_video(input_file: str, screen_output: str, webcam_output: str,
         try:
             subprocess.run(webcam_command, capture_output=True, text=True, check=True)
             output_files.append(webcam_output)
+            
+            # Check webcam recording bitrate
+            webcam_bitrate = get_video_bitrate(webcam_output)
+            logger.info(f"✅ Webcam video processed successfully - Bitrate: {webcam_bitrate:.1f} Kbps")
+            if webcam_bitrate > 100:
+                logger.warning(f"⚠️ Webcam recording bitrate ({webcam_bitrate:.1f} Kbps) is higher than recommended (100 Kbps)")
+                logger.warning("⚠️ Please check with tech team to fix this")
+            
+            # Final success message with bitrate info
+            logger.info("\n" + "="*50)
+            logger.info("\n")
+            logger.info("✨ Video Processing Complete!")
+            logger.info(f"   ├─ 🖥️ Screen: {os.path.basename(screen_output)} ({screen_bitrate:.1f} Kbps)")
+            logger.info(f"   └─ 📸 Webcam: {os.path.basename(webcam_output)} ({webcam_bitrate:.1f} Kbps)")
+            logger.info("\n")
+            logger.info("="*50 + "\n")
+            
             progress_tracker.update_progress(process_id, {
                 "status": "complete",
-                "message": "Processing complete",
+                "message": "✅ Processing complete",
                 "progress": 100
             })
         except subprocess.CalledProcessError as e:
-            raise Exception(f"FFmpeg error (webcam): {e.stderr}")
+            raise Exception(f"❌ Webcam processing failed: {e.stderr}")
         
         return output_files
         
     except Exception as e:
         error_msg = str(e)
-        logging.error(f"Error processing video: {error_msg}")
+        logger.error(f"❌ Processing failed: {error_msg}")
         
         # Update error progress
         progress_tracker.update_progress(process_id, {
             "status": "error",
-            "message": f"Error: {error_msg}"
+            "message": f"❌ Error: {error_msg}"
         })
         
         # Clean up any output files if there was an error
@@ -532,5 +655,5 @@ def get_video_info(file_path: str) -> dict:
         return info
 
     except Exception as e:
-        logging.error(f"Error getting video info: {e}")
+        logger.error(f"Error getting video info: {e}")
         return None
