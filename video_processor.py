@@ -111,10 +111,14 @@ def get_m3u8_info(url: str) -> Tuple[int, List[Tuple[str, float]], float]:
         total_duration = 0
         segments = []
 
-        if playlist.is_endlist:
-            for seg in playlist.segments:
-                segments.append((seg.uri, seg.duration))
-                total_duration += seg.duration
+        # Check if it's a master playlist
+        if playlist.playlists:  # Master playlist case
+            best_playlist = max(playlist.playlists, key=lambda p: p.stream_info.bandwidth)
+            playlist = m3u8.load(best_playlist.uri)
+
+        # Extract segment info
+        segments = [(seg.uri, seg.duration) for seg in playlist.segments]
+        total_duration = sum(seg[1] for seg in segments)
 
         return len(segments), segments, total_duration
     except Exception as e:
