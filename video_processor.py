@@ -104,75 +104,63 @@ def get_duration_from_ffmpeg(file_or_url):
     except:
         return None
 
-def get_m3u8_info(url: str) -> Tuple[int, List[str], float]:
-    """Get total segments and their URLs from M3U8 playlist"""
+def get_m3u8_info(url: str) -> Tuple[int, List[Tuple[str, float]], float]:
+    """Get total segments, their URLs, and actual durations from M3U8 playlist"""
     try:
         playlist = m3u8.load(url)
         total_duration = 0
-        
-        if playlist.is_endlist:
-            # Direct segments in the main playlist
-            segments = playlist.segments
-            total_duration = sum([seg.duration for seg in segments])
-        else:
-            # Check if it's a master playlist
-            if playlist.is_endlist is False and playlist.playlists:
-                # Get the highest quality stream
-                best_playlist = max(playlist.playlists, key=lambda p: p.stream_info.bandwidth)
-                playlist = m3u8.load(best_playlist.uri)
-                segments = playlist.segments
-                total_duration = sum([seg.duration for seg in segments])
+        segments = []
 
-        return len(segments), [seg.uri for seg in segments], total_duration
+        # Check if it's a master playlist
+        if playlist.playlists:  # Master playlist case
+            best_playlist = max(playlist.playlists, key=lambda p: p.stream_info.bandwidth)
+            playlist = m3u8.load(best_playlist.uri)
+
+        # Extract segment info
+        segments = [(seg.uri, seg.duration) for seg in playlist.segments]
+        total_duration = sum(seg[1] for seg in segments)
+
+        return len(segments), segments, total_duration
     except Exception as e:
         logger.error(f"Error parsing M3U8: {e}")
         return 0, [], 0
 
-def download_segment(segment_info: Tuple[int, str, str]) -> bool:
-    """Download a single M3U8 segment"""
-    index, url, output_dir = segment_info
+def download_segment(segment_info: Tuple[str, str, str]) -> bool:
+    """Download a single M3U8 segment without modifying its filename."""
+    url, original_filename, output_dir = segment_info
     try:
         response = requests.get(url, stream=True, timeout=10)
         response.raise_for_status()
         
-        output_path = os.path.join(output_dir, f"segment_{index:05d}.ts")
+        output_path = os.path.join(output_dir, original_filename)
+
         with open(output_path, 'wb') as f:
             for chunk in response.iter_content(chunk_size=8192):
                 if chunk:
                     f.write(chunk)
+        
         return True
     except Exception as e:
-        logger.debug(f"⚠️ Failed to download segment {index}")  # Only log at debug level
+        logger.debug(f"⚠️ Failed to download segment {original_filename}: {e}")
         return False
 
-def merge_segments(temp_dir: str, output_path: str) -> bool:
-    """Merge downloaded segments into final video"""
+def convert_m3u8_to_mp4(m3u8_path: str, output_path: str):
+    """Convert M3U8 playlist to MP4 using FFmpeg"""
     try:
-        logger.info("\n🔄 Merging segments...")
-        # Create a file list for FFmpeg
-        segments = sorted([f for f in os.listdir(temp_dir) if f.endswith('.ts')])
-        file_list = os.path.join(temp_dir, 'segments.txt')
-        
-        with open(file_list, 'w') as f:
-            for segment in segments:
-                f.write(f"file '{os.path.join(temp_dir, segment)}'\n")
-        
-        # Merge segments using FFmpeg
         cmd = [
             'ffmpeg',
-            '-f', 'concat',
-            '-safe', '0',
-            '-i', file_list,
+            '-protocol_whitelist', 'file,http,https,tcp,tls',
+            '-i', m3u8_path,
             '-c', 'copy',
-            '-y',
-            output_path
+            '-bsf:a', 'aac_adtstoasc',
+            '-movflags', '+faststart',
+            '-y', output_path
         ]
-        
         subprocess.run(cmd, check=True, capture_output=True)
-        return True
+        logger.info(f"✅ MP4 conversion successful: {output_path}")
     except Exception as e:
-        logger.error(f"Error merging segments: {str(e)}")
-        return False
+        logger.error(f"❌ MP4 conversion failed: {e}")
+        raise
 
 def get_optimal_workers():
     """Calculate optimal number of worker threads based on system resources"""
@@ -241,13 +229,24 @@ def download_full_video(video_url: str, filename: str, process_id: str) -> str:
     # Create temporary directory for segments
     temp_dir = os.path.join(get_downloads_path(), 'temp', process_id)
     os.makedirs(temp_dir, exist_ok=True)
-    
+
+    # Define the local path for storing the M3U8 file
+    m3u8_filename = "playlist.m3u8"  # Set a standard filename
+    local_m3u8_path = os.path.join(temp_dir, m3u8_filename)
+
     try:
-        # Get M3U8 info
-        logger.info("\n🔍 Starting download process...")
-        logger.info(f"📝 Processing: {filename}")
-        total_segments, segment_urls, total_duration = get_m3u8_info(video_url)
-        if total_segments == 0 or not segment_urls:
+        # Download the M3U8 file from the given URL
+        logger.info("\n🔍 Downloading M3U8 playlist...")
+        response = requests.get(video_url, stream=True, timeout=10)
+        response.raise_for_status()  # Ensure the request was successful
+
+        # Save the downloaded M3U8 file locally
+        with open(local_m3u8_path, 'wb') as f:
+            f.write(response.content)
+
+        # Parse the M3U8 file to extract segment details
+        total_segments, segment_data, total_duration = get_m3u8_info(local_m3u8_path)
+        if total_segments == 0 or not segment_data:
             raise Exception("No segments found in playlist")
         
         logger.info(f"\n📋 Playlist Analysis:")
@@ -257,8 +256,8 @@ def download_full_video(video_url: str, filename: str, process_id: str) -> str:
         # Prepare segment download tasks
         base_url = video_url.rsplit('/', 1)[0] + '/'
         download_tasks = [
-            (i, urljoin(base_url, url), temp_dir)
-            for i, url in enumerate(segment_urls)
+            (urljoin(base_url, seg_url), seg_url, temp_dir)  # Keep original TS filename
+            for seg_url, _ in segment_data
         ]
         
         # Initialize progress tracking
@@ -360,10 +359,9 @@ def download_full_video(video_url: str, filename: str, process_id: str) -> str:
             "message": "🔄 Merging segments..."
         })
         
-        # Merge segments into final video
-        if not merge_segments(temp_dir, output_path):
-            raise Exception("❌ Failed to merge segments")
-        
+        # Convert M3U8 to MP4
+        convert_m3u8_to_mp4(local_m3u8_path, output_path)
+
         # Generate and display download report
         total_time = time.time() - start_time
         report = generate_download_report(total_segments, total_time, last_speed, output_path)
